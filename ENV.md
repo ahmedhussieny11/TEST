@@ -61,8 +61,8 @@ VITE_WS_URL=http://localhost:4000
 
 | المفتاح | مثال لموقعك |
 |---------|-------------|
-| `FRONTEND_URL` | `https://aqua-herring-301950.hostingersite.com` |
-| `CORS_ORIGINS` | `https://aqua-herring-301950.hostingersite.com` |
+| `FRONTEND_URL` | `https://darkred-dove-545886.hostingersite.com` |
+| `CORS_ORIGINS` | `https://darkred-dove-545886.hostingersite.com` |
 | `DATABASE_URL` | `file:./data/prod.db` |
 | `JWT_SECRET` | نص عشوائي طويل |
 
