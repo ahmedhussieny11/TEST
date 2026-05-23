@@ -26,11 +26,13 @@ npm install && npm run dev
 
 ## نشر على سيرفر حقيقي
 
-**لا ترفعي `dist` فقط.** اقرئي:
+**لا ترفعي `dist` فقط.**
 
-- **[DEPLOY-PRODUCTION.md](./DEPLOY-PRODUCTION.md)** — لماذا يفشل على السيرفر وكيف تصلحينه  
-- **[DEPLOY-HOSTINGER.md](./DEPLOY-HOSTINGER.md)** — رفع الواجهة على Hostinger  
-- **[SETUP.md](./SETUP.md)** — إعداد تفصيلي  
+| استضافتك | الدليل |
+|----------|--------|
+| **Hostinger خطة عادية** | **[DEPLOY-HOSTINGER-SHARED.md](./DEPLOY-HOSTINGER-SHARED.md)** |
+| Hostinger VPS / سيرفر | [DEPLOY-PRODUCTION.md](./DEPLOY-PRODUCTION.md) |
+| عام | [SETUP.md](./SETUP.md) |
 
 قبل `npm run build` للإنتاج: انسخي `.env.production.example` → `.env.production` وضعي رابط الـ API الحقيقي.
 

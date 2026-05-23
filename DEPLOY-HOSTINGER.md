@@ -1,7 +1,22 @@
-# رفع الواجهة على Hostinger (استضافة مشتركة)
+# رفع الواجهة على Hostinger
+
+## الخطة العادية (استضافة مشتركة) — ابدئي هنا
+
+**الدليل الكامل خطوة بخطوة:** **[DEPLOY-HOSTINGER-SHARED.md](./DEPLOY-HOSTINGER-SHARED.md)**
+
+- Hostinger = الواجهة فقط (`public_html`)
+- Render.com (مجاني) = الـ API
+- لا يمكن تشغيل NestJS على الخطة العادية
+
+---
+
+## Hostinger VPS
+
+لو عندك VPS من Hostinger، انظري **`DEPLOY-PRODUCTION.md`** (تشغيل Backend + proxy).
+
+---
 
 > **مهم:** رفع `dist` فقط **لا يكفي**. النظام يحتاج **Backend (API)** شغال.
-> اقرئي **`DEPLOY-PRODUCTION.md`** — يشرح لماذا يعمل محلياً ويفشل على السيرفر.
 
 ---
 
