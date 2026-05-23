@@ -1,5 +1,5 @@
 import { Calendar, Clock, Baby, ClipboardList } from 'lucide-react';
-import { PatientCardData } from '@/data/mockData';
+import { PatientCardData } from '@/types';
 
 interface PatientCardProps {
   data: PatientCardData;

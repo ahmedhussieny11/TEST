@@ -3,9 +3,14 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    color-scheme: light;
+  }
+
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-slate-50 text-gray-900 antialiased;
     font-family: 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color-scheme: light;
   }
 }
 
@@ -23,11 +28,26 @@
   }
   
   .input-field {
-    @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none;
+    @apply w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none;
+  }
+
+  /* قوائم منسدلة — نص داكن (ويندوز / فايرفوكس / وضع داكن للنظام) */
+  select,
+  select.input-field {
+    @apply cursor-pointer;
+    color-scheme: light only;
+    color: #111827 !important;
+    background-color: #ffffff !important;
+  }
+
+  select option,
+  select.input-field option {
+    color: #111827 !important;
+    background-color: #ffffff !important;
   }
   
   .card {
-    @apply bg-white rounded-lg shadow-md p-6;
+    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6;
   }
 }
 
@@ -84,5 +104,42 @@
 .react-calendar__tile--active:enabled:hover,
 .react-calendar__tile--active:enabled:focus {
   background: #0284c7;
+}
+
+.clinic-calendar-wrapper {
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.clinic-calendar {
+  width: 100% !important;
+  border: none !important;
+  font-family: inherit;
+}
+
+.clinic-calendar .react-calendar__month-view__days {
+  display: grid !important;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.clinic-calendar .react-calendar__tile {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+.clinic-calendar-dot {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #0284c7;
+  line-height: 1;
 }
 

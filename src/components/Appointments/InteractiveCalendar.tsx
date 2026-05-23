@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -18,31 +18,26 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Clock, User, GripVertical, Baby } from 'lucide-react';
-import { Appointment, AppointmentStatus, VisitType } from '@/types';
-import { getPatientById } from '@/data/mockData';
+import { Appointment, AppointmentStatus, VisitType, Patient } from '@/types';
 import { format } from 'date-fns';
+import { ar } from 'date-fns/locale';
 import { toast } from 'react-toastify';
 
 interface InteractiveCalendarProps {
   appointments: Appointment[];
   selectedDate: Date;
-  onAppointmentUpdate: (appointmentId: string, newTime: string) => void;
+  onAppointmentUpdate: (appointmentId: string, newTime: string) => void | Promise<void>;
 }
 
 interface AppointmentCardProps {
   appointment: Appointment;
-  patient: ReturnType<typeof getPatientById>;
+  patient: Patient | undefined;
 }
 
 function AppointmentCard({ appointment, patient }: AppointmentCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: appointment.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: appointment.id,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -88,9 +83,7 @@ function AppointmentCard({ appointment, patient }: AppointmentCardProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`border-2 rounded-lg p-3 mb-2 cursor-move ${getStatusColor(
-        appointment.status
-      )}`}
+      className={`border-2 rounded-lg p-3 mb-2 cursor-move ${getStatusColor(appointment.status)}`}
     >
       <div className="flex items-center gap-2">
         <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
@@ -101,14 +94,14 @@ function AppointmentCard({ appointment, patient }: AppointmentCardProps) {
             <User className="w-4 h-4" />
             <p className="font-medium truncate">{patient.name}</p>
           </div>
-          <div className="flex items-center gap-2 mt-1 text-xs">
+          <div className="flex items-center gap-2 mt-1 text-xs flex-wrap">
             <Clock className="w-3 h-3" />
             <span>{appointment.time}</span>
-            <span className="px-1">•</span>
+            <span>•</span>
             <span>{getTypeText(appointment.type)}</span>
-            {patient.isPregnant && (
+            {patient.isPregnant && patient.pregnancyWeek != null && (
               <>
-                <span className="px-1">•</span>
+                <span>•</span>
                 <Baby className="w-3 h-3" />
                 <span>أسبوع {patient.pregnancyWeek}</span>
               </>
@@ -128,86 +121,57 @@ export default function InteractiveCalendar({
   const navigate = useNavigate();
   const [sortedAppointments, setSortedAppointments] = useState(appointments);
 
+  useEffect(() => {
+    setSortedAppointments(appointments);
+  }, [appointments]);
+
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // تجميع المواعيد حسب الساعة
   const appointmentsByHour: Record<string, Appointment[]> = {};
   sortedAppointments.forEach((apt) => {
     const hour = apt.time.split(':')[0];
-    if (!appointmentsByHour[hour]) {
-      appointmentsByHour[hour] = [];
-    }
+    if (!appointmentsByHour[hour]) appointmentsByHour[hour] = [];
     appointmentsByHour[hour].push(apt);
   });
 
-  // ساعات العمل (9 صباحاً - 5 مساءً)
   const workingHours = Array.from({ length: 9 }, (_, i) => i + 9);
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    if (!over || active.id === over.id) return;
 
-    if (!over) return;
-
-    const activeId = active.id as string;
-    const overId = over.id as string;
-
-    if (activeId === overId) return;
-
-    // البحث عن الموعدين
-    const activeIndex = sortedAppointments.findIndex((apt) => apt.id === activeId);
-    const overIndex = sortedAppointments.findIndex((apt) => apt.id === overId);
-
+    const activeIndex = sortedAppointments.findIndex((apt) => apt.id === active.id);
+    const overIndex = sortedAppointments.findIndex((apt) => apt.id === over.id);
     if (activeIndex === -1 || overIndex === -1) return;
 
-    // الحصول على الوقت الجديد من الموعد المستهدف
     const newTime = sortedAppointments[overIndex].time;
-
-    // تحديث الموعد
-    const updatedAppointments = arrayMove(sortedAppointments, activeIndex, overIndex);
-    setSortedAppointments(updatedAppointments);
-
-    // تحديث الوقت
-    onAppointmentUpdate(activeId, newTime);
-    toast.success('تم تغيير موعد الموعد بنجاح');
-  };
-
-  const handleAppointmentClick = (appointmentId: string) => {
-    navigate(`/visit/${appointmentId}`);
+    const updated = arrayMove(sortedAppointments, activeIndex, overIndex);
+    setSortedAppointments(updated);
+    await onAppointmentUpdate(active.id as string, newTime);
+    toast.success('تم تحديث وقت الموعد');
   };
 
   return (
     <div className="card">
       <h2 className="text-xl font-semibold mb-4">
-        جدول المواعيد - {format(selectedDate, 'yyyy-MM-dd')}
+        جدول المواعيد — {format(selectedDate, 'EEEE d MMMM', { locale: ar })}
       </h2>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <div className="space-y-4">
           {workingHours.map((hour) => {
             const hourKey = `${hour.toString().padStart(2, '0')}:00`;
-            const hourAppointments = appointmentsByHour[hour] || [];
+            const hourAppointments = appointmentsByHour[hour.toString().padStart(2, '0')] ?? [];
 
             return (
               <div key={hour} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-gray-500" />
-                    <h3 className="font-semibold text-lg">
-                      {hourKey} - {hour + 1}:00
-                    </h3>
-                    <span className="text-sm text-gray-500">
-                      ({hourAppointments.length} موعد)
-                    </span>
-                  </div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Clock className="w-5 h-5 text-gray-500" />
+                  <h3 className="font-semibold text-lg">{hourKey}</h3>
+                  <span className="text-sm text-gray-500">({hourAppointments.length} موعد)</span>
                 </div>
 
                 {hourAppointments.length > 0 ? (
@@ -216,28 +180,28 @@ export default function InteractiveCalendar({
                     strategy={verticalListSortingStrategy}
                   >
                     <div className="space-y-2">
-                      {hourAppointments.map((appointment) => {
-                        const patient = getPatientById(appointment.patientId);
-                        if (!patient) return null;
-
-                        return (
-                          <div
-                            key={appointment.id}
-                            onClick={() => handleAppointmentClick(appointment.id)}
-                          >
-                            <AppointmentCard
-                              appointment={appointment}
-                              patient={patient}
-                            />
-                          </div>
-                        );
-                      })}
+                      {hourAppointments.map((appointment) => (
+                        <div
+                          key={appointment.id}
+                          onClick={() => navigate(`/app/visit/${appointment.id}`)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') navigate(`/app/visit/${appointment.id}`);
+                          }}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <AppointmentCard
+                            appointment={appointment}
+                            patient={appointment.patient as Patient | undefined}
+                          />
+                        </div>
+                      ))}
                     </div>
                   </SortableContext>
                 ) : (
-                  <div className="text-center py-4 text-gray-400 text-sm">
+                  <p className="text-center py-4 text-gray-400 text-sm">
                     لا توجد مواعيد في هذه الساعة
-                  </div>
+                  </p>
                 )}
               </div>
             );
@@ -247,4 +211,3 @@ export default function InteractiveCalendar({
     </div>
   );
 }
-

@@ -1,10 +1,14 @@
 import { Link } from 'react-router-dom';
 import { Calendar, Clock } from 'lucide-react';
 import { AppointmentStatus, VisitType } from '@/types';
-import { getTodayAppointments, getPatientById } from '@/data/mockData';
+import { Appointment } from '@/types';
 
-export default function TodayAppointments() {
-  const appointments = getTodayAppointments().slice(0, 5);
+interface Props {
+  appointments?: Appointment[];
+}
+
+export default function TodayAppointments({ appointments: propAppointments }: Props) {
+  const appointments = (propAppointments ?? []).slice(0, 5);
 
   const getTypeText = (type: VisitType) => {
     switch (type) {
@@ -52,7 +56,7 @@ export default function TodayAppointments() {
       <div className="space-y-3">
         {appointments.length > 0 ? (
           appointments.map((appointment) => {
-            const patient = getPatientById(appointment.patientId);
+            const patient = appointment.patient;
             if (!patient) return null;
 
             return (

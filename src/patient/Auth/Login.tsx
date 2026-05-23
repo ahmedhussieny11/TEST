@@ -1,76 +1,98 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { usePatientAuthStore } from '../store/patientAuthStore';
-import { Phone, ArrowRight, AlertCircle } from 'lucide-react';
+import { LogIn, ArrowLeft, AlertCircle } from 'lucide-react';
+import {
+  readRedirectParam,
+  setPatientRedirect,
+  getPatientRedirect,
+  clearPatientRedirect,
+} from '../utils/patientRedirect';
+import PatientAuthShell from '../components/PatientAuthShell';
 
 export default function PatientLogin() {
   const navigate = useNavigate();
-  const { startLogin, error, resetError } = usePatientAuthStore();
+  const [searchParams] = useSearchParams();
+  const { startLogin, error, resetError, isAuthenticated } = usePatientAuthStore();
   const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const redirectTo = readRedirectParam(searchParams.toString()) || '/patient/dashboard';
 
   useEffect(() => {
     resetError();
-  }, [resetError]);
+    setPatientRedirect(redirectTo);
+  }, [resetError, redirectTo]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (isAuthenticated) navigate(redirectTo, { replace: true });
+  }, [isAuthenticated, navigate, redirectTo]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone) return;
-    const success = startLogin(phone);
+    if (!phone.trim()) return;
+    setLoading(true);
+    const success = await startLogin(phone.trim());
+    setLoading(false);
     if (success) {
-      navigate('/patient/otp');
+      const target = getPatientRedirect(redirectTo);
+      clearPatientRedirect();
+      navigate(target, { replace: true });
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary-50 to-white flex items-center justify-center px-4">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 border border-gray-100 text-right">
-        <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-100 mb-4">
-            <Phone className="w-8 h-8 text-primary-600" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">أهلاً بك</h1>
-          <p className="text-gray-500">أدخلي رقم جوالك لتأكيد الهوية</p>
+    <PatientAuthShell
+      title="تسجيل الدخول"
+      subtitle="أدخلي رقم الجوال المسجّل في العيادة — دخول مباشر بدون رمز"
+      icon={<LogIn className="w-7 h-7 text-white" />}
+      footer={
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 text-center text-sm text-gray-600">
+          <p>
+            ليس لديك حساب؟{' '}
+            <Link
+              to={`/patient/register?redirect=${encodeURIComponent(redirectTo)}`}
+              className="text-primary-600 font-bold hover:underline"
+            >
+              أنشئي حساباً مجاناً
+            </Link>
+          </p>
+          <p className="text-xs text-gray-400 mt-3">
+            للتجربة: رقم <span className="font-semibold text-gray-600">01012345678</span>
+          </p>
+        </div>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">رقم الجوال</label>
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="01xxxxxxxxx"
+            className="input-field text-lg"
+            dir="ltr"
+            required
+          />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              رقم الجوال
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="01012345678"
-              className="input-field text-right"
-              required
-            />
+        {error && (
+          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
           </div>
+        )}
 
-          {error && (
-            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl px-4 py-3">
-              <AlertCircle className="w-4 h-4" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <button type="submit" className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-lg">
-            متابعة
-            <ArrowRight className="w-5 h-5" />
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-gray-500 mt-6">
-          ليس لديك حساب؟{' '}
-          <Link to="/patient/register" className="text-primary-600 font-semibold">
-            سجلي من هنا
-          </Link>
-        </p>
-        <p className="text-center text-xs text-gray-400 mt-2">
-          للاختبار يمكنك استخدام رقم <span className="font-semibold">01012345678</span>
-        </p>
-      </div>
-    </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="btn-primary w-full flex items-center justify-center gap-2 py-3.5 text-lg disabled:opacity-60"
+        >
+          {loading ? 'جاري الدخول...' : 'تسجيل الدخول'}
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+      </form>
+    </PatientAuthShell>
   );
 }
-

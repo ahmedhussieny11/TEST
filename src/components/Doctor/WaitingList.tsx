@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Clock, User, Baby, Play } from 'lucide-react';
 import { Appointment, AppointmentStatus, VisitType } from '@/types';
-import { getPatientById } from '@/data/mockData';
 
 interface WaitingListProps {
   appointments: Appointment[];
@@ -70,7 +69,7 @@ export default function WaitingList({ appointments, onStartVisit }: WaitingListP
 
       <div className="space-y-3 max-h-[600px] overflow-y-auto">
         {waitingAppointments.map((appointment) => {
-          const patient = getPatientById(appointment.patientId);
+          const patient = appointment.patient;
           if (!patient) return null;
 
           return (

@@ -1,20 +1,26 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { differenceInHours, format, differenceInMinutes } from 'date-fns';
-import { Calendar, Bell, ArrowLeft, XCircle, Baby, Phone, MapPin, Users } from 'lucide-react';
+import {
+  Calendar,
+  Bell,
+  ArrowLeft,
+  XCircle,
+  Baby,
+  Phone,
+  MapPin,
+  Users,
+  ListOrdered,
+  Settings,
+} from 'lucide-react';
 import { usePatientAuthStore } from '../store/patientAuthStore';
 import { usePatientDataStore } from '../store/patientDataStore';
-import {
-  getPatientVisits,
-  mockPrescriptions,
-  getPregnancyTimeline,
-  getMonthlyCarePlan,
-  getPregnancyProfile,
-  getPatientById,
-} from '@/data/mockData';
+import { useQuery } from 'react-query';
+import { patientPortalApi } from '@/api/patientPortal';
 import { AppointmentStatus, MonthlyCareTask } from '@/types';
 import { toast } from 'react-toastify';
 import PatientCard from '../components/PatientCard';
+import PatientMedicalUpload from '../components/PatientMedicalUpload';
 
 const careStatusText: Record<MonthlyCareTask['status'], string> = {
   pending: 'منتظر',
@@ -39,17 +45,21 @@ const careTypeText: Record<MonthlyCareTask['type'], string> = {
 export default function PatientDashboard() {
   const navigate = useNavigate();
   const { patient, isAuthenticated, logout } = usePatientAuthStore();
-  const { appointments, setPatientId, refreshAppointments, cancelAppointment } =
-    usePatientDataStore();
+  const { appointments, loadFromApi, cancelAppointment } = usePatientDataStore();
+
+  const { data: portalData } = useQuery(
+    ['patient-portal', patient?.id],
+    () => patientPortalApi.me().then((r) => r.data),
+    { enabled: !!patient?.id }
+  );
 
   useEffect(() => {
     if (!isAuthenticated || !patient) {
       navigate('/patient/login');
       return;
     }
-    setPatientId(patient.id);
-    refreshAppointments();
-  }, [isAuthenticated, patient, navigate, setPatientId, refreshAppointments]);
+    loadFromApi();
+  }, [isAuthenticated, patient, navigate, loadFromApi]);
 
   const nextAppointment = useMemo(() => {
     return appointments
@@ -57,14 +67,14 @@ export default function PatientDashboard() {
       .sort((a, b) => new Date(a.date + 'T' + a.time).getTime() - new Date(b.date + 'T' + b.time).getTime())[0];
   }, [appointments]);
 
-  const patientDetails = patient ? getPatientById(patient.id) : undefined;
-  const displayName = patientDetails?.name ?? patient?.name ?? '';
-  const patientPhone = patientDetails?.phone ?? patient?.phone ?? '';
-  const patientEmail = patientDetails?.email ?? patient?.email ?? 'لم يتم إدخاله بعد';
-  const patientAddress = patientDetails?.address ?? 'لم يتم تسجيل عنوان، يمكنك إضافته من خلال العيادة.';
-  const isPregnant = Boolean(patientDetails?.isPregnant);
-  const visits = patient ? getPatientVisits(patient.id) : [];
-  const prescriptions = mockPrescriptions.filter((pres) => pres.patientId === patient?.id);
+  const patientDetails = portalData?.patient ?? patient;
+  const displayName = patientDetails?.name ?? '';
+  const patientPhone = patientDetails?.phone ?? '';
+  const patientEmail = patientDetails?.email ?? 'لم يتم إدخاله بعد';
+  const patientAddress = (patientDetails as { address?: string })?.address ?? 'لم يتم تسجيل عنوان';
+  const isPregnant = Boolean((patientDetails as { isPregnant?: boolean })?.isPregnant);
+  const prescriptions = portalData?.prescriptions ?? [];
+  const pregnancies = portalData?.pregnancies ?? [];
   const cardDataForPatient = nextAppointment && patient
     ? {
         id: patient.id,
@@ -86,23 +96,37 @@ export default function PatientDashboard() {
         notes: patientDetails?.medicalHistory?.allergies?.join(', '),
       }
     : null;
-  const pregnancyProfile = patient ? getPregnancyProfile(patient.id) : undefined;
-  const pregnancyTimeline = patientDetails?.isPregnant && patient ? getPregnancyTimeline(patient.id) : [];
-  const carePlan = patientDetails?.isPregnant && patient ? getMonthlyCarePlan(patient.id) : [];
-  const currentMonth = pregnancyProfile ? Math.ceil(pregnancyProfile.currentWeek / 4) : undefined;
+  const pregnancyProfile = pregnancies[0] as { currentWeek?: number; dueDate?: string } | undefined;
+  const pregnancyTimeline = [] as {
+    id: string;
+    month: number;
+    title: string;
+    weekStart: number;
+    weekEnd: number;
+    fetalWeight: string;
+    fetalLength: string;
+    description: string;
+  }[];
+  const carePlan = [] as MonthlyCareTask[];
+  const visits = [] as { id: string; date: string; diagnosis?: string; complaint?: string; type?: string }[];
+  const currentMonth = pregnancyProfile?.currentWeek
+    ? Math.ceil(pregnancyProfile.currentWeek / 4)
+    : undefined;
 
   const countdown = useMemo(() => {
     if (!nextAppointment) return null;
     const appointmentDate = new Date(`${nextAppointment.date}T${nextAppointment.time}`);
     const now = new Date();
+    if (Number.isNaN(appointmentDate.getTime())) return null;
     const hours = differenceInHours(appointmentDate, now);
     const minutes = differenceInMinutes(appointmentDate, now) % 60;
     if (hours < 0) return 'الموعد بدأ أو انتهى';
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
     return `متبقي ${hours} ساعة و ${minutes} دقيقة`;
   }, [nextAppointment]);
 
-  const handleCancel = (appointmentId: string) => {
-    cancelAppointment(appointmentId);
+  const handleCancel = async (appointmentId: string) => {
+    await cancelAppointment(appointmentId);
     toast.success('تم إلغاء الموعد');
   };
 
@@ -118,15 +142,28 @@ export default function PatientDashboard() {
             <p className="text-sm text-gray-500">سعيدة برؤيتك مجدداً</p>
             <h1 className="text-3xl font-bold">مرحباً، {displayName}</h1>
           </div>
-          <div className="flex items-center gap-3">
-            <Link to="/book" className="btn-primary">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Link to="/patient/queue" className="btn-primary inline-flex items-center gap-2">
+              <ListOrdered className="w-4 h-4" />
+              متتبع الدور
+            </Link>
+            <Link to="/book" className="btn-secondary">
               حجز موعد جديد
+            </Link>
+            <Link
+              to="/patient/profile"
+              className="btn-secondary inline-flex items-center gap-2"
+            >
+              <Settings className="w-4 h-4" />
+              بياناتي
             </Link>
             <button onClick={logout} className="btn-secondary">
               تسجيل خروج
             </button>
           </div>
         </header>
+
+        <PatientMedicalUpload patientId={patient.id} />
 
         <section className="grid gap-6 lg:grid-cols-3">
           <div className="bg-white rounded-3xl border border-gray-100 p-6">
@@ -199,7 +236,7 @@ export default function PatientDashboard() {
                   <p className="text-gray-500 mb-1">العمليات السابقة</p>
                   {patientDetails.medicalHistory.previousSurgeries?.length ? (
                     <ul className="list-disc list-inside text-gray-700">
-                      {patientDetails.medicalHistory.previousSurgeries.map((surgery, idx) => (
+                      {(patientDetails as { medicalHistory?: { previousSurgeries?: string[] } }).medicalHistory?.previousSurgeries?.map((surgery: string, idx: number) => (
                         <li key={idx}>{surgery}</li>
                       ))}
                     </ul>
@@ -211,7 +248,7 @@ export default function PatientDashboard() {
                   <p className="text-gray-500 mb-1">الحساسيات</p>
                   {patientDetails.medicalHistory.allergies?.length ? (
                     <div className="flex flex-wrap gap-2">
-                      {patientDetails.medicalHistory.allergies.map((allergy, idx) => (
+                      {(patientDetails as { medicalHistory?: { allergies?: string[] } }).medicalHistory?.allergies?.map((allergy: string, idx: number) => (
                         <span key={idx} className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-xs">
                           {allergy}
                         </span>
@@ -225,7 +262,7 @@ export default function PatientDashboard() {
                   <p className="text-gray-500 mb-1">أمراض مزمنة</p>
                   {patientDetails.medicalHistory.chronicDiseases?.length ? (
                     <div className="flex flex-wrap gap-2">
-                      {patientDetails.medicalHistory.chronicDiseases.map((disease, idx) => (
+                      {(patientDetails as { medicalHistory?: { chronicDiseases?: string[] } }).medicalHistory?.chronicDiseases?.map((disease: string, idx: number) => (
                         <span key={idx} className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs">
                           {disease}
                         </span>
@@ -267,8 +304,9 @@ export default function PatientDashboard() {
                 </div>
                 {pregnancyProfile && (
                   <div className="text-sm text-gray-500 flex flex-wrap gap-4">
-                    <span>ثلث رقم {pregnancyProfile.trimester}</span>
-                    <span>موعد الولادة المتوقع: {format(new Date(pregnancyProfile.dueDate), 'yyyy-MM-dd')}</span>
+                    {pregnancyProfile.dueDate && (
+                      <span>موعد الولادة المتوقع: {format(new Date(pregnancyProfile.dueDate), 'yyyy-MM-dd')}</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -347,6 +385,19 @@ export default function PatientDashboard() {
                 <p className="text-lg font-semibold text-primary-600">مؤكد</p>
               </div>
             </div>
+            {nextAppointment.invoice && (
+              <p
+                className={`text-sm rounded-xl px-4 py-2 ${
+                  nextAppointment.invoice.status === 'paid'
+                    ? 'bg-green-50 text-green-800 border border-green-100'
+                    : 'bg-amber-50 text-amber-900 border border-amber-100'
+                }`}
+              >
+                {nextAppointment.invoice.status === 'paid'
+                  ? 'تم الدفع في العيادة'
+                  : `بانتظار الدفع في العيادة — ${nextAppointment.invoice.total.toLocaleString()} ج.م نقداً عند الوصول`}
+              </p>
+            )}
             <p className="text-gray-600">{countdown}</p>
             <div className="flex flex-wrap gap-3">
               <button
@@ -446,12 +497,12 @@ export default function PatientDashboard() {
           </div>
           {prescriptions.length > 0 ? (
             <div className="space-y-4">
-              {prescriptions.map((prescription) => (
+                {(prescriptions as { id: string; createdAt?: string; medications: Record<string, string>[] }[]).map((prescription) => (
                 <div key={prescription.id} className="border border-gray-200 rounded-2xl p-4">
                   <p className="text-sm text-gray-500 mb-2">{prescription.createdAt}</p>
                   <ul className="list-disc list-inside text-gray-700 space-y-1">
-                    {prescription.medications.map((med) => (
-                      <li key={med.id}>
+                        {prescription.medications.map((med, medIdx) => (
+                      <li key={medIdx}>
                         {med.name} - {med.dosage} - {med.frequency}
                       </li>
                     ))}

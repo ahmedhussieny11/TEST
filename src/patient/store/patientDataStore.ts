@@ -1,53 +1,37 @@
 import { create } from 'zustand';
-import { Appointment, AppointmentStatus } from '@/types';
-import {
-  createPortalAppointment,
-  getPatientAppointments,
-  updateAppointmentStatus,
-  PortalBookingPayload,
-} from '@/data/mockData';
+import { Appointment } from '@/types';
+import { patientPortalApi } from '@/api/patientPortal';
 
 interface PatientDataState {
-  patientId: string | null;
   appointments: Appointment[];
-  setPatientId: (patientId: string) => void;
-  refreshAppointments: () => void;
-  bookAppointment: (payload: Omit<PortalBookingPayload, 'patientId'>) => Appointment | null;
-  cancelAppointment: (appointmentId: string) => void;
+  refreshAppointments: () => Promise<void>;
+  loadFromApi: () => Promise<void>;
+  bookAppointment: (payload: {
+    doctorId: string;
+    date: string;
+    time: string;
+  }) => Promise<void>;
+  cancelAppointment: (appointmentId: string) => Promise<void>;
 }
 
-export const usePatientDataStore = create<PatientDataState>((set, get) => ({
-  patientId: null,
+export const usePatientDataStore = create<PatientDataState>((set) => ({
   appointments: [],
-  setPatientId: (patientId: string) => {
-    set({
-      patientId,
-      appointments: getPatientAppointments(patientId),
-    });
+  loadFromApi: async () => {
+    const { data } = await patientPortalApi.me();
+    set({ appointments: data.appointments ?? [] });
   },
-  refreshAppointments: () => {
-    const { patientId } = get();
-    if (!patientId) return;
-    set({ appointments: getPatientAppointments(patientId) });
+  refreshAppointments: async () => {
+    const { data } = await patientPortalApi.me();
+    set({ appointments: data.appointments ?? [] });
   },
-  bookAppointment: (payload) => {
-    const { patientId } = get();
-    if (!patientId) return null;
-    const appointment = createPortalAppointment({
-      patientId,
-      ...payload,
-    });
-    set({
-      appointments: getPatientAppointments(patientId),
-    });
-    return appointment;
+  bookAppointment: async (payload) => {
+    await patientPortalApi.book(payload);
+    const { data } = await patientPortalApi.me();
+    set({ appointments: data.appointments ?? [] });
   },
-  cancelAppointment: (appointmentId: string) => {
-    updateAppointmentStatus(appointmentId, AppointmentStatus.CANCELLED);
-    const { patientId } = get();
-    if (patientId) {
-      set({ appointments: getPatientAppointments(patientId) });
-    }
+  cancelAppointment: async (appointmentId) => {
+    await patientPortalApi.cancelAppointment(appointmentId);
+    const { data } = await patientPortalApi.me();
+    set({ appointments: data.appointments ?? [] });
   },
 }));
-

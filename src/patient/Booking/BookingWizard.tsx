@@ -1,228 +1,338 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useQuery } from 'react-query';
 import { addDays, format } from 'date-fns';
+import { ar } from 'date-fns/locale';
 import { toast } from 'react-toastify';
-import { Calendar, CheckCircle, ArrowRight } from 'lucide-react';
-import { patientServices, getAvailableSlots } from '@/data/mockData';
-import { VisitType } from '@/types';
-import ServiceCard from '../components/ServiceCard';
-import StepIndicator from '../components/StepIndicator';
-import TimeSlotButton from '../components/TimeSlotButton';
+import { Calendar, CheckCircle2, LogOut, Phone, User } from 'lucide-react';
+import { publicBookingApi } from '@/api/publicBooking';
+import { patientPortalApi } from '@/api/patientPortal';
 import { usePatientAuthStore } from '../store/patientAuthStore';
-import { usePatientDataStore } from '../store/patientDataStore';
-
-const steps = ['اختيار الخدمة', 'اختيار اليوم', 'اختيار الساعة', 'تأكيد الحجز'];
+import { setPatientRedirect } from '../utils/patientRedirect';
+import PatientSiteHeader from '../components/PatientSiteHeader';
 
 export default function BookingWizard() {
-  const navigate = useNavigate();
-  const { patient, isAuthenticated } = usePatientAuthStore();
-  const { setPatientId, bookAppointment } = usePatientDataStore();
+  const { patient, isAuthenticated, logout } = usePatientAuthStore();
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [serviceId, setServiceId] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
 
-  const [currentStep, setCurrentStep] = useState(1);
-  const [selectedService, setSelectedService] = useState(patientServices[0]);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  useEffect(() => {
+    if (isAuthenticated && patient) {
+      setName(patient.name);
+      setPhone(patient.phone);
+    }
+  }, [isAuthenticated, patient]);
 
-  const upcomingDays = useMemo(
-    () => Array.from({ length: 7 }, (_, idx) => addDays(new Date(), idx)),
-    []
+  const { data: config } = useQuery('booking-config', () =>
+    publicBookingApi.getConfig().then((r) => r.data)
   );
 
-  const slots = useMemo(() => {
-    const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    return getAvailableSlots(dateStr);
-  }, [selectedDate]);
+  const doctorId = config?.doctors[0]?.id;
+  const selectedService = config?.services.find((s) => s.id === serviceId);
 
-  const handleNext = () => {
-    if (currentStep === 1 && !selectedService) {
-      toast.error('يرجى اختيار خدمة');
+  const { data: slotsData, isLoading: slotsLoading } = useQuery(
+    ['booking-slots', selectedDate, doctorId],
+    () => publicBookingApi.getSlots(selectedDate, doctorId).then((r) => r.data),
+    { enabled: !!selectedDate && !!doctorId }
+  );
+
+  const upcomingDays = useMemo(() => {
+    const days: {
+      date: string;
+      weekday: string;
+      dateLabel: string;
+      disabled: boolean;
+    }[] = [];
+    const workingDays = config?.settings.workingDays ?? [0, 1, 2, 3, 4, 6];
+    for (let i = 0; i < 14; i++) {
+      const d = addDays(new Date(), i);
+      const dateStr = format(d, 'yyyy-MM-dd');
+      days.push({
+        date: dateStr,
+        weekday: format(d, 'EEE', { locale: ar }),
+        dateLabel: format(d, 'd MMM', { locale: ar }),
+        disabled: !workingDays.includes(d.getDay()),
+      });
+    }
+    return days;
+  }, [config]);
+
+  const handleBook = async () => {
+    if (!isAuthenticated && (!name.trim() || !phone.trim())) {
+      toast.error('اكتبي اسمك ورقم الموبايل');
       return;
     }
-    if (currentStep === 2 && !selectedDate) {
-      toast.error('يرجى اختيار اليوم');
+    if (!serviceId || !selectedTime || !doctorId) {
+      toast.error('اختاري الخدمة والموعد');
       return;
     }
-    if (currentStep === 3 && !selectedSlot) {
-      toast.error('يرجى اختيار الساعة');
-      return;
+    setSubmitting(true);
+    try {
+      if (isAuthenticated && patient) {
+        await patientPortalApi.book({
+          doctorId,
+          date: selectedDate,
+          time: selectedTime,
+          serviceId,
+        });
+      } else {
+        await publicBookingApi.guestBook({
+          name: name.trim(),
+          phone: phone.trim(),
+          serviceId,
+          date: selectedDate,
+          time: selectedTime,
+          doctorId,
+        });
+      }
+      setDone(true);
+      toast.success('تم الحجز بنجاح!');
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || 'تعذر إتمام الحجز';
+      toast.error(typeof msg === 'string' ? msg : 'تعذر إتمام الحجز');
+    } finally {
+      setSubmitting(false);
     }
-    setCurrentStep((prev) => Math.min(prev + 1, steps.length));
   };
 
-  const handleBack = () => {
-    setCurrentStep((prev) => Math.max(prev - 1, 1));
-  };
+  const loginHref = '/patient/login?redirect=/book';
+  const registerHref = '/patient/register?redirect=/book';
 
-  const handleConfirm = () => {
-    if (!isAuthenticated) {
-      toast.info('يرجى تسجيل الدخول أولاً');
-      navigate('/patient/login');
-      return;
-    }
-
-    if (!selectedService || !selectedSlot) return;
-
-    setIsSubmitting(true);
-    if (patient) {
-      setPatientId(patient.id);
-    }
-
-    const appointment = bookAppointment({
-      serviceId: selectedService.id,
-      serviceName: selectedService.name,
-      date: format(selectedDate, 'yyyy-MM-dd'),
-      time: selectedSlot,
-      type: selectedService.type as VisitType,
-    });
-
-    if (appointment) {
-      toast.success('تم حجز الموعد بنجاح');
-      navigate('/patient/dashboard');
-    } else {
-      toast.error('حدث خطأ أثناء الحجز');
-    }
-    setIsSubmitting(false);
-  };
+  if (done) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl border border-gray-100 p-8 text-center">
+          <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">تم تأكيد حجزك</h1>
+          <p className="text-gray-600">
+            {selectedService?.name} — {selectedDate} الساعة {selectedTime}
+          </p>
+          {selectedService && (
+            <p className="mt-3 mb-6 text-primary-700 font-semibold bg-primary-50 rounded-xl px-4 py-3 text-sm">
+              المبلغ المتوقع: {selectedService.price.toLocaleString()} ج.م
+              <span className="block font-normal text-gray-600 mt-1">
+                الدفع في العيادة عند الوصول — احتفظي برقم جوالك
+              </span>
+            </p>
+          )}
+          {!selectedService && <p className="mb-6" />}
+          <div className="flex flex-col gap-3">
+            {isAuthenticated ? (
+              <Link to="/patient/dashboard" className="btn-primary inline-block">
+                لوحة المتابعة
+              </Link>
+            ) : null}
+            <Link to="/" className="btn-secondary inline-block">
+              العودة للرئيسية
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
-        <div className="text-right mb-8">
-          <p className="text-primary-600 font-semibold">حجز موعد جديد</p>
-          <h1 className="text-3xl font-bold">معالج الحجز</h1>
+    <div className="min-h-screen bg-slate-50">
+      <PatientSiteHeader />
+      <div className="max-w-lg mx-auto space-y-5 py-8 px-4">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900">حجز موعد</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {isAuthenticated
+              ? `مرحباً ${patient?.name} — اختاري الخدمة والموعد`
+              : 'بدون حساب أو سجّلي دخولك لحجز أسرع'}
+          </p>
         </div>
 
-        <StepIndicator steps={steps} currentStep={currentStep} />
+        {isAuthenticated && patient ? (
+          <section className="card border border-primary-100 bg-primary-50/50">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-gray-900 flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  {patient.name}
+                </p>
+                <p className="text-sm text-gray-600 mt-1" dir="ltr">
+                  {patient.phone}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => logout()}
+                className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1"
+              >
+                <LogOut className="w-3 h-3" />
+                خروج
+              </button>
+            </div>
+          </section>
+        ) : (
+          <section className="card border border-gray-100 space-y-3">
+            <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+              <User className="w-4 h-4" /> بياناتك
+            </h2>
+            <input
+              className="input-field"
+              placeholder="الاسم الكامل"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <input
+              className="input-field"
+              placeholder="رقم الموبايل"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              dir="ltr"
+            />
+            <p className="text-xs text-gray-500 text-center pt-1">
+              عندك حساب؟{' '}
+              <Link
+                to={loginHref}
+                className="text-primary-600 font-medium"
+                onClick={() => setPatientRedirect('/book')}
+              >
+                سجّلي دخول
+              </Link>
+              {' · '}
+              <Link
+                to={registerHref}
+                className="text-primary-600 font-medium"
+                onClick={() => setPatientRedirect('/book')}
+              >
+                إنشاء حساب
+              </Link>
+            </p>
+          </section>
+        )}
 
-        {/* Step content */}
-        <div className="space-y-8">
-          {currentStep === 1 && (
-            <div className="grid md:grid-cols-2 gap-6">
-              {patientServices.map((service) => (
-                <ServiceCard
-                  key={service.id}
-                  service={service}
-                  isActive={service.id === selectedService.id}
-                  onSelect={(srv) => {
-                    setSelectedService(srv);
-                    setSelectedSlot(null);
-                  }}
-                />
+        <section className="card border border-gray-100">
+          <h2 className="font-semibold text-gray-800 mb-3">نوع الزيارة</h2>
+          <div className="space-y-2">
+            {config?.services.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setServiceId(s.id)}
+                className={`w-full text-right p-3 rounded-xl border transition-colors ${
+                  serviceId === s.id
+                    ? 'border-primary-500 bg-primary-50'
+                    : 'border-gray-200 hover:border-primary-200'
+                }`}
+              >
+                <div className="flex justify-between items-center gap-2">
+                  <span className="font-medium">{s.name}</span>
+                  <span className="text-primary-600 font-semibold whitespace-nowrap">
+                    {s.price} ج.م
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="card border border-gray-100">
+          <h2 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+            <Calendar className="w-4 h-4" /> اليوم
+          </h2>
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {upcomingDays.map((day) => (
+              <button
+                key={day.date}
+                type="button"
+                disabled={day.disabled}
+                onClick={() => {
+                  setSelectedDate(day.date);
+                  setSelectedTime(null);
+                }}
+                className={`py-2 px-1 rounded-lg text-sm border text-center ${
+                  day.disabled
+                    ? 'opacity-40 cursor-not-allowed border-gray-100'
+                    : selectedDate === day.date
+                      ? 'border-primary-500 bg-primary-50 text-primary-700 font-semibold'
+                      : 'border-gray-200 hover:border-primary-300'
+                }`}
+              >
+                {day.weekday}
+                <span className="block text-[10px] text-gray-500 font-normal">
+                  {day.dateLabel}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="card border border-gray-100">
+          <h2 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+            <Phone className="w-4 h-4" /> الساعة
+            {slotsData?.slotsPerHour && (
+              <span className="text-xs font-normal text-gray-400">
+                (حتى {slotsData.slotsPerHour} حالات/ساعة)
+              </span>
+            )}
+          </h2>
+          {slotsLoading ? (
+            <p className="text-sm text-gray-500">جاري تحميل المواعيد...</p>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {(slotsData?.slots ?? []).map((slot) => (
+                <button
+                  key={slot.time}
+                  type="button"
+                  disabled={slot.isFull}
+                  onClick={() => setSelectedTime(slot.time)}
+                  className={`py-2 px-1 rounded-lg text-sm border ${
+                    slot.isFull
+                      ? 'opacity-40 line-through border-gray-100'
+                      : selectedTime === slot.time
+                        ? 'border-primary-500 bg-primary-50 font-semibold'
+                        : 'border-gray-200 hover:border-primary-300'
+                  }`}
+                >
+                  {slot.time}
+                  {!slot.isFull && (
+                    <span className="block text-[10px] text-gray-400">
+                      {slot.remaining} متاح
+                    </span>
+                  )}
+                </button>
               ))}
             </div>
           )}
+        </section>
 
-          {currentStep === 2 && (
-            <div>
-              <p className="text-gray-600 mb-4">اختاري اليوم المناسب</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {upcomingDays.map((day) => {
-                  const isSelected =
-                    format(day, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
-                  return (
-                    <button
-                      key={day.toISOString()}
-                      onClick={() => {
-                        setSelectedDate(day);
-                        setSelectedSlot(null);
-                      }}
-                      className={`border rounded-2xl p-4 text-right ${
-                        isSelected
-                          ? 'border-primary-500 bg-primary-50'
-                          : 'border-gray-200 hover:border-primary-200'
-                      }`}
-                    >
-                      <p className="text-sm text-gray-500">{format(day, 'EEEE')}</p>
-                      <p className="text-xl font-bold">{format(day, 'dd')}</p>
-                      <p className="text-sm text-gray-500">{format(day, 'MMMM')}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+        {selectedService && selectedTime && (
+          <div className="bg-primary-50 border border-primary-100 rounded-xl p-4 text-sm">
+            <p>
+              <strong>{selectedService.name}</strong> — {selectedService.price} ج.م
+            </p>
+            <p className="text-gray-600 mt-1">
+              {selectedDate} الساعة {selectedTime}
+            </p>
+          </div>
+        )}
 
-          {currentStep === 3 && (
-            <div>
-              <div className="flex items-center gap-2 mb-4 text-gray-600">
-                <Calendar className="w-5 h-5" />
-                <span>الساعات المتاحة في {format(selectedDate, 'yyyy-MM-dd')}</span>
-              </div>
-              <div className="grid md:grid-cols-3 gap-4">
-                {slots.map((slot) => (
-                  <TimeSlotButton
-                    key={slot.time}
-                    time={slot.time}
-                    remaining={slot.remaining}
-                    disabled={slot.isFull}
-                    isSelected={selectedSlot === slot.time}
-                    onSelect={setSelectedSlot}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+        <button
+          type="button"
+          onClick={handleBook}
+          disabled={submitting}
+          className="w-full btn-primary py-3 text-lg"
+        >
+          {submitting ? 'جاري الحجز...' : 'تأكيد الحجز'}
+        </button>
 
-          {currentStep === 4 && (
-            <div className="bg-gray-50 border border-gray-200 rounded-3xl p-6 space-y-4 text-right">
-              <p className="text-primary-600 font-semibold">تأكيد الحجز</p>
-              <h2 className="text-2xl font-bold text-gray-900">{selectedService.name}</h2>
-              <div className="grid md:grid-cols-2 gap-4 text-gray-700">
-                <div>
-                  <p className="text-sm text-gray-500">التاريخ</p>
-                  <p className="font-medium">{format(selectedDate, 'yyyy-MM-dd')}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">الساعة</p>
-                  <p className="font-medium">{selectedSlot}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">السعر</p>
-                  <p className="font-medium">{selectedService.price} ج.م</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">نوع الخدمة</p>
-                  <p className="font-medium">
-                    {selectedService.type === VisitType.PREGNANCY_CHECK
-                      ? 'متابعة حمل'
-                      : 'كشف / استشارة'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <CheckCircle className="w-5 h-5 text-green-500" />
-                الدفع يتم في العيادة، وسيتم إرسال تذكير قبل الموعد.
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="mt-10 flex flex-col sm:flex-row gap-4">
-          {currentStep > 1 && (
-            <button onClick={handleBack} className="btn-secondary flex-1">
-              رجوع
-            </button>
-          )}
-          {currentStep < steps.length && (
-            <button onClick={handleNext} className="btn-primary flex-1 flex items-center justify-center gap-2">
-              التالي
-              <ArrowRight className="w-5 h-5" />
-            </button>
-          )}
-          {currentStep === steps.length && (
-            <button
-              onClick={handleConfirm}
-              disabled={isSubmitting}
-              className="btn-primary flex-1"
-            >
-              {isSubmitting ? 'جاري التأكيد...' : 'تأكيد الحجز'}
-            </button>
-          )}
-        </div>
+        {!isAuthenticated && (
+          <p className="text-center text-xs text-gray-400">
+            الدفع في العيادة عند الوصول
+          </p>
+        )}
       </div>
     </div>
   );
 }
-

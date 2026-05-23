@@ -6,6 +6,13 @@ import { ToastContainer } from 'react-toastify'
 import App from './App.tsx'
 import './index.css'
 import 'react-toastify/dist/ReactToastify.css'
+import { setPatientToken } from './api/client'
+import { usePatientAuthStore } from './patient/store/patientAuthStore'
+
+const savedPatientToken = usePatientAuthStore.getState().token
+if (savedPatientToken) {
+  setPatientToken(savedPatientToken)
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {

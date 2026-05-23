@@ -85,6 +85,7 @@ export default function PregnancyCalculator({
               className="input-field flex-1"
             />
             <button
+              type="button"
               onClick={calculatePregnancyWeek}
               className="btn-primary"
             >

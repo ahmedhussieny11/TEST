@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { X, Plus, Trash2, Printer } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { prescriptionsApi } from '@/api/prescriptions';
+import { printPrescription } from '@/utils/printPrescription';
 
 interface Medication {
   id: string;
@@ -13,14 +15,18 @@ interface Medication {
 
 interface PrescriptionModalProps {
   onClose: () => void;
+  onSaved?: () => void;
   visitId: string;
   patientId: string;
+  patientName?: string;
 }
 
 export default function PrescriptionModal({
   onClose,
+  onSaved,
   visitId,
   patientId,
+  patientName,
 }: PrescriptionModalProps) {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -58,11 +64,30 @@ export default function PrescriptionModal({
     setMedications(medications.filter((m) => m.id !== id));
   };
 
-  const handleSave = () => {
-    // حفظ الروشتة
-    console.log({ visitId, patientId, medications });
-    toast.success('تم حفظ الروشتة بنجاح');
-    onClose();
+  const handleSave = async (doPrint: boolean) => {
+    if (medications.length === 0) {
+      toast.error('أضف دواء واحداً على الأقل');
+      return;
+    }
+    try {
+      const { data } = await prescriptionsApi.create({
+        visitId,
+        patientId,
+        medications,
+      });
+      toast.success('تم حفظ الروشتة بنجاح');
+      onSaved?.();
+      if (doPrint) {
+        printPrescription({
+          patientName: patientName ?? 'مريضة',
+          createdAt: new Date(data.createdAt).toLocaleDateString('ar-EG'),
+          medications,
+        });
+      }
+      onClose();
+    } catch {
+      toast.error('تعذر حفظ الروشتة');
+    }
   };
 
   return (
@@ -241,7 +266,15 @@ export default function PrescriptionModal({
               إلغاء
             </button>
             <button
-              onClick={handleSave}
+              type="button"
+              onClick={() => handleSave(false)}
+              className="btn-secondary"
+            >
+              حفظ
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSave(true)}
               className="btn-primary flex items-center gap-2"
             >
               <Printer className="w-5 h-5" />

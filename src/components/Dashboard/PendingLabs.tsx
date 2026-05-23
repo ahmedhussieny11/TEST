@@ -1,10 +1,24 @@
 import { Link } from 'react-router-dom';
 import { FlaskConical, Clock } from 'lucide-react';
-import { getPendingLabTests, getPatientById } from '@/data/mockData';
+import { useQuery } from 'react-query';
+import { labsApi } from '@/api/labs';
+import { LabStatus } from '@/types';
 import { differenceInDays } from 'date-fns';
 
 export default function PendingLabs() {
-  const pendingLabs = getPendingLabTests().slice(0, 5);
+  const { data: labs = [] } = useQuery('pending-labs-dashboard', () =>
+    labsApi.list().then((r) => r.data)
+  );
+
+  const pendingLabs = labs
+    .filter(
+      (lab) =>
+        lab.status === LabStatus.REQUESTED ||
+        lab.status === LabStatus.IN_PROGRESS ||
+        String(lab.status) === 'requested' ||
+        String(lab.status) === 'in_progress'
+    )
+    .slice(0, 5);
 
   return (
     <div className="card">
@@ -24,9 +38,7 @@ export default function PendingLabs() {
       <div className="space-y-3">
         {pendingLabs.length > 0 ? (
           pendingLabs.map((lab) => {
-            const patient = getPatientById(lab.patientId);
-            if (!patient) return null;
-
+            const patient = (lab as { patient?: { name: string } }).patient;
             const daysAgo = differenceInDays(new Date(), new Date(lab.requestedDate));
 
             return (
@@ -36,7 +48,9 @@ export default function PendingLabs() {
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium text-gray-900">{patient.name}</p>
+                    <p className="font-medium text-gray-900">
+                      {patient?.name ?? 'مريضة'}
+                    </p>
                     <p className="text-sm text-gray-600">{lab.testName}</p>
                   </div>
                   <div className="flex items-center gap-2 text-yellow-600">
@@ -58,4 +72,3 @@ export default function PendingLabs() {
     </div>
   );
 }
-

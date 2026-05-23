@@ -1,13 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import {
-  registerPatient,
-  verifyPatientOtp,
-  findPatientByPhone,
-  resendPatientOtp,
-} from '@/data/mockData';
+import { patientPortalApi, PatientSession } from '@/api/patientPortal';
+import { setPatientToken } from '@/api/client';
 
-type AuthStage = 'idle' | 'register' | 'login' | 'pendingOtp' | 'authenticated';
+type AuthStage = 'idle' | 'authenticated';
 
 interface PatientProfile {
   id: string;
@@ -16,147 +12,92 @@ interface PatientProfile {
   email?: string;
 }
 
+function mapPatient(p: PatientSession['patient']): PatientProfile {
+  return {
+    id: p.id,
+    name: p.name,
+    phone: p.phone,
+    email: p.email ?? undefined,
+  };
+}
+
+function applySession(
+  set: (
+    partial:
+      | Partial<PatientAuthState>
+      | ((state: PatientAuthState) => Partial<PatientAuthState>)
+  ) => void,
+  data: PatientSession
+) {
+  setPatientToken(data.token);
+  set({
+    patient: mapPatient(data.patient),
+    token: data.token,
+    stage: 'authenticated',
+    isAuthenticated: true,
+    error: null,
+  });
+}
+
 interface PatientAuthState {
   patient: PatientProfile | null;
-  accountId: string | null;
-  pendingPhone: string | null;
-  pendingName: string | null;
-  pendingEmail: string | null;
   stage: AuthStage;
   isAuthenticated: boolean;
-  lastOtp?: string | null;
-  otpExpiresAt?: string | null;
   error?: string | null;
-  startRegistration: (name: string, phone: string, email?: string) => { otp: string; expiresAt: string };
-  startLogin: (phone: string) => boolean;
-  verifyOtp: (code: string) => boolean;
-  resendOtp: () => string | null;
+  token: string | null;
+  startRegistration: (
+    name: string,
+    phone: string,
+    email?: string,
+    age?: number,
+    address?: string
+  ) => Promise<boolean>;
+  startLogin: (phone: string) => Promise<boolean>;
   logout: () => void;
   resetError: () => void;
 }
 
 export const usePatientAuthStore = create<PatientAuthState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       patient: null,
-      accountId: null,
-      pendingPhone: null,
-      pendingName: null,
-      pendingEmail: null,
       stage: 'idle',
       isAuthenticated: false,
-      lastOtp: null,
-      otpExpiresAt: null,
+      token: null,
       error: null,
-      startRegistration: (name, phone, email) => {
-        const result = registerPatient({ name, phone, email });
-        set({
-          pendingPhone: phone,
-          pendingName: name,
-          pendingEmail: email ?? null,
-          stage: 'pendingOtp',
-          lastOtp: result.otp,
-          otpExpiresAt: result.expiresAt,
-          error: null,
-        });
-        return { otp: result.otp, expiresAt: result.expiresAt };
+      startRegistration: async (name, phone, email, age, address) => {
+        try {
+          const { data } = await patientPortalApi.register({
+            name,
+            phone,
+            email,
+            age,
+            address,
+          });
+          applySession(set, data);
+          return true;
+        } catch {
+          set({ error: 'تعذر إنشاء الحساب — قد يكون الرقم مسجلاً مسبقاً' });
+          return false;
+        }
       },
-      startLogin: (phone) => {
-        const existing = findPatientByPhone(phone);
-        if (!existing) {
-          set({
-            error: 'لا يوجد حساب مرتبط بهذا الرقم، الرجاء التسجيل أولاً.',
-            stage: 'login',
-          });
+      startLogin: async (phone) => {
+        try {
+          const { data } = await patientPortalApi.login(phone);
+          applySession(set, data);
+          return true;
+        } catch {
+          set({ error: 'لا يوجد حساب بهذا الرقم' });
           return false;
         }
-        const resend = resendPatientOtp(phone);
-        set({
-          pendingPhone: phone,
-          pendingName: existing.patient.name,
-          pendingEmail: existing.patient.email ?? null,
-          stage: 'pendingOtp',
-          lastOtp: resend?.otp ?? null,
-          otpExpiresAt: resend?.expiresAt ?? null,
-          error: null,
-        });
-        return true;
-      },
-      verifyOtp: (code) => {
-        const { pendingPhone } = get();
-        if (!pendingPhone) {
-          set({ error: 'لا يوجد طلب تسجيل أو دخول قائم.' });
-          return false;
-        }
-        const result = verifyPatientOtp(pendingPhone, code);
-        if (!result.success) {
-          const reasonMap: Record<string, string> = {
-            not_found: 'لم يتم العثور على حساب لهذا الرقم.',
-            invalid_code: 'رمز التحقق غير صحيح.',
-            expired: 'انتهت صلاحية الرمز، الرجاء طلب رمز جديد.',
-          };
-          set({
-            error: reasonMap[result.reason] || 'تعذر التحقق من الرمز.',
-            stage: 'pendingOtp',
-          });
-          return false;
-        }
-        if (!result.patient) {
-          set({
-            error: 'تعذر تحميل ملف المريضة.',
-            stage: 'pendingOtp',
-          });
-          return false;
-        }
-        set({
-          patient: {
-            id: result.patient.id,
-            name: result.patient.name,
-            phone: result.patient.phone,
-            email: result.patient.email,
-          },
-          accountId: result.account.id,
-          pendingPhone: null,
-          pendingName: null,
-          pendingEmail: null,
-          stage: 'authenticated',
-          isAuthenticated: true,
-          lastOtp: null,
-          otpExpiresAt: null,
-          error: null,
-        });
-        return true;
-      },
-      resendOtp: () => {
-        const { pendingPhone, pendingName } = get();
-        if (!pendingPhone) return null;
-        const resend = resendPatientOtp(pendingPhone);
-        if (!resend) {
-          set({
-            error: 'تعذر إرسال الرمز حالياً.',
-          });
-          return null;
-        }
-        set({
-          stage: 'pendingOtp',
-          lastOtp: resend.otp,
-          otpExpiresAt: resend.expiresAt,
-          error: null,
-          pendingName: pendingName,
-        });
-        return resend.otp;
       },
       logout: () => {
+        setPatientToken(null);
         set({
           patient: null,
-          accountId: null,
-          pendingPhone: null,
-          pendingName: null,
-          pendingEmail: null,
+          token: null,
           stage: 'idle',
           isAuthenticated: false,
-          lastOtp: null,
-          otpExpiresAt: null,
           error: null,
         });
       },
@@ -164,7 +105,17 @@ export const usePatientAuthStore = create<PatientAuthState>()(
     }),
     {
       name: 'patient-auth-storage',
+      partialize: (state) => ({
+        patient: state.patient,
+        token: state.token,
+        stage: state.stage,
+        isAuthenticated: state.isAuthenticated,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.token) {
+          setPatientToken(state.token);
+        }
+      },
     }
   )
 );
-

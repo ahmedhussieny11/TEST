@@ -1,4 +1,6 @@
 import { NavLink } from 'react-router-dom';
+import { useStaffClinicBranding } from '@/hooks/useClinicBranding';
+import ClinicBrand from '@/components/Branding/ClinicBrand';
 import { useAuthStore } from '@/store/authStore';
 import { UserRole } from '@/types';
 import {
@@ -12,6 +14,7 @@ import {
   Settings,
   UserCog,
   LogOut,
+  Clock,
 } from 'lucide-react';
 
 const menuItems = [
@@ -25,6 +28,12 @@ const menuItems = [
     name: 'المواعيد',
     path: '/app/appointments',
     icon: Calendar,
+    roles: [UserRole.DOCTOR, UserRole.RECEPTION, UserRole.ADMIN],
+  },
+  {
+    name: 'طابور الانتظار',
+    path: '/app/queue',
+    icon: Clock,
     roles: [UserRole.DOCTOR, UserRole.RECEPTION, UserRole.ADMIN],
   },
   {
@@ -73,12 +82,13 @@ const menuItems = [
     name: 'الإعدادات',
     path: '/app/settings',
     icon: Settings,
-    roles: [UserRole.ADMIN],
+    roles: [UserRole.ADMIN, UserRole.DOCTOR],
   },
 ];
 
 export default function Sidebar() {
   const { user, logout, hasPermission } = useAuthStore();
+  const { branding } = useStaffClinicBranding();
 
   const filteredMenuItems = menuItems.filter((item) =>
     hasPermission(item.roles)
@@ -86,11 +96,8 @@ export default function Sidebar() {
 
   return (
     <aside className="w-64 bg-white shadow-lg flex flex-col">
-      <div className="p-6 border-b">
-        <h1 className="text-2xl font-bold text-primary-600">
-          عيادة د. محمد عبدالحكيم
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">طب النساء والتوليد المتكامل</p>
+      <div className="p-5 border-b">
+        <ClinicBrand branding={branding} to="/app/dashboard" />
       </div>
 
       <nav className="flex-1 overflow-y-auto p-4">

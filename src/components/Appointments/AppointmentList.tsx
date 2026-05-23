@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
 import { Clock, User, Calendar, Phone, Eye } from 'lucide-react';
-import { AppointmentStatus, VisitType } from '@/types';
+import { Appointment, AppointmentStatus, VisitType } from '@/types';
 import { format } from 'date-fns';
-import { mockAppointments, getPatientById } from '@/data/mockData';
+import { appointmentDateKey } from '@/utils/appointments';
 
 interface AppointmentListProps {
+  appointments: Appointment[];
   searchQuery: string;
 }
 
@@ -57,29 +58,24 @@ const getTypeText = (type: VisitType) => {
   }
 };
 
-export default function AppointmentList({ searchQuery }: AppointmentListProps) {
-  const appointments = mockAppointments
-    .map((apt) => ({
-      ...apt,
-      patient: apt.patient ?? getPatientById(apt.patientId),
-    }))
+export default function AppointmentList({ appointments, searchQuery }: AppointmentListProps) {
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredAppointments = appointments
+    .filter((apt) => {
+      if (!normalizedQuery) return true;
+      const patientName = apt.patient?.name?.toLowerCase() ?? '';
+      const patientPhone = apt.patient?.phone ?? '';
+      return (
+        patientName.includes(normalizedQuery) ||
+        patientPhone.includes(normalizedQuery) ||
+        apt.id.includes(normalizedQuery)
+      );
+    })
     .sort(
       (a, b) =>
-        new Date(`${a.date}T${a.time}`).getTime() -
-        new Date(`${b.date}T${b.time}`).getTime()
+        new Date(`${appointmentDateKey(a.date)}T${a.time}`).getTime() -
+        new Date(`${appointmentDateKey(b.date)}T${b.time}`).getTime()
     );
-
-  const normalizedQuery = searchQuery.trim().toLowerCase();
-  const filteredAppointments = appointments.filter((apt) => {
-    if (!normalizedQuery) return true;
-    const patientName = apt.patient?.name?.toLowerCase() ?? '';
-    const patientPhone = apt.patient?.phone ?? '';
-    return (
-      patientName.includes(normalizedQuery) ||
-      patientPhone.includes(normalizedQuery) ||
-      apt.id.includes(normalizedQuery)
-    );
-  });
 
   return (
     <div className="card">
@@ -87,21 +83,13 @@ export default function AppointmentList({ searchQuery }: AppointmentListProps) {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-200">
-              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                المريضة
-              </th>
+              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">المريضة</th>
               <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
                 التاريخ والوقت
               </th>
-              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                النوع
-              </th>
-              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                الحالة
-              </th>
-              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                إجراءات
-              </th>
+              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">النوع</th>
+              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">الحالة</th>
+              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">إجراءات</th>
             </tr>
           </thead>
           <tbody>
@@ -117,27 +105,25 @@ export default function AppointmentList({ searchQuery }: AppointmentListProps) {
                     </div>
                     <div>
                       <p className="font-medium text-gray-900">
-                        {appointment.patient?.name}
+                        {appointment.patient?.name ?? '—'}
                       </p>
                       <p className="text-sm text-gray-500 flex items-center gap-1">
                         <Phone className="w-3 h-3" />
-                        {appointment.patient?.phone}
+                        {appointment.patient?.phone ?? '—'}
                       </p>
                     </div>
                   </div>
                 </td>
                 <td className="py-4 px-4">
-                  <div className="flex items-center gap-2 text-gray-700">
+                  <div className="flex items-center gap-2 text-gray-700 flex-wrap">
                     <Calendar className="w-4 h-4" />
-                    <span>{format(new Date(appointment.date), 'yyyy-MM-dd')}</span>
-                    <Clock className="w-4 h-4 mr-2" />
+                    <span>{appointmentDateKey(appointment.date)}</span>
+                    <Clock className="w-4 h-4" />
                     <span>{appointment.time}</span>
                   </div>
                 </td>
                 <td className="py-4 px-4">
-                  <span className="text-sm text-gray-700">
-                    {getTypeText(appointment.type)}
-                  </span>
+                  <span className="text-sm text-gray-700">{getTypeText(appointment.type)}</span>
                 </td>
                 <td className="py-4 px-4">
                   <span
@@ -151,7 +137,7 @@ export default function AppointmentList({ searchQuery }: AppointmentListProps) {
                 <td className="py-4 px-4">
                   <Link
                     to={`/app/visit/${appointment.id}`}
-                    className="btn-secondary text-sm py-1 px-3 flex items-center gap-1"
+                    className="btn-secondary text-sm py-1 px-3 inline-flex items-center gap-1"
                   >
                     <Eye className="w-4 h-4" />
                     عرض
@@ -172,4 +158,3 @@ export default function AppointmentList({ searchQuery }: AppointmentListProps) {
     </div>
   );
 }
-

@@ -1,5 +1,4 @@
 import { Invoice } from '@/types';
-import { getPatientById } from '@/data/mockData';
 import { format } from 'date-fns';
 import './InvoicePrint.css';
 
@@ -9,7 +8,7 @@ interface InvoicePrintProps {
 }
 
 export default function InvoicePrint({ invoice, onClose }: InvoicePrintProps) {
-  const patient = getPatientById(invoice.patientId);
+  const patient = (invoice as Invoice & { patient?: { name: string } }).patient;
 
   const handlePrint = () => {
     window.print();

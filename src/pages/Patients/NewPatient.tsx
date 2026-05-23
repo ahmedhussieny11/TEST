@@ -5,7 +5,8 @@ import { toast } from 'react-toastify';
 import { ArrowRight, Zap, FileText, Search } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { UserRole } from '@/types';
-import { mockPatients } from '@/data/mockData';
+import { patientsApi } from '@/api/patients';
+import { Patient } from '@/types';
 
 interface PatientFormData {
   name: string;
@@ -34,31 +35,52 @@ export default function NewPatient() {
     user?.role === UserRole.RECEPTION
   );
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<typeof mockPatients>([]);
+  const [searchResults, setSearchResults] = useState<Patient[]>([]);
 
-  const handleSearch = (query: string) => {
+  const handleSearch = async (query: string) => {
     setSearchQuery(query);
     if (query.length > 2) {
-      const results = mockPatients.filter(
-        (p) =>
-          p.name.includes(query) ||
-          p.phone.includes(query)
-      );
-      setSearchResults(results);
+      const { data } = await patientsApi.list(query);
+      setSearchResults(data);
     } else {
       setSearchResults([]);
     }
   };
 
-  const handleSelectPatient = (patient: typeof mockPatients[0]) => {
-    navigate(`/patients/${patient.id}`);
+  const handleSelectPatient = (patient: Patient) => {
+    navigate(`/app/patients/${patient.id}`);
   };
 
   const onSubmit = async (data: PatientFormData) => {
-    // هنا سيتم إرسال البيانات للـ API
-    console.log(data);
-    toast.success('تم تسجيل المريضة بنجاح');
-    navigate('/patients');
+    try {
+      const { data: patient } = await patientsApi.create({
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
+        dateOfBirth: data.dateOfBirth,
+        address: data.address,
+        isPregnant: data.isPregnant,
+        pregnancyWeek: data.pregnancyWeek ? parseInt(data.pregnancyWeek, 10) : undefined,
+        medicalHistory: {
+          previousSurgeries: data.previousSurgeries?.split(',').map((s) => s.trim()),
+          allergies: data.allergies?.split(',').map((s) => s.trim()),
+          chronicDiseases: data.chronicDiseases?.split(',').map((s) => s.trim()),
+          previousPregnancies: data.previousPregnancies ? parseInt(data.previousPregnancies, 10) : undefined,
+          previousDeliveries: data.previousDeliveries ? parseInt(data.previousDeliveries, 10) : undefined,
+        },
+        emergencyContact: data.emergencyContactName
+          ? {
+              name: data.emergencyContactName,
+              phone: data.emergencyContactPhone || '',
+              relation: data.emergencyContactRelation || '',
+            }
+          : undefined,
+      });
+      toast.success('تم تسجيل المريضة بنجاح');
+      navigate(`/app/patients/${patient.id}`);
+    } catch {
+      toast.error('تعذر تسجيل المريضة');
+    }
   };
 
   return (

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { DollarSign, Users, TrendingUp, Download } from 'lucide-react';
 import {
   LineChart,
@@ -12,54 +12,85 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { mockInvoices, mockAppointments, mockPatients } from '@/data/mockData';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from 'date-fns';
+import { useQuery } from 'react-query';
+import { billingApi } from '@/api/billing';
+import { appointmentsApi } from '@/api/appointments';
+import { patientsApi } from '@/api/patients';
+import { dashboardApi } from '@/api/dashboard';
+import { appointmentDateKey } from '@/utils/appointments';
 
 export default function Reports() {
   const [reportType, setReportType] = useState<'daily' | 'monthly'>('daily');
-  const [selectedDate, _setSelectedDate] = useState(new Date());
+  const [selectedDate] = useState(new Date());
 
-  // بيانات تجريبية للتقارير
-  const dailyData = eachDayOfInterval({
-    start: startOfMonth(selectedDate),
-    end: endOfMonth(selectedDate),
-  }).map((date) => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    const dayInvoices = mockInvoices.filter(
-      (inv) => format(new Date(inv.createdAt), 'yyyy-MM-dd') === dateStr
-    );
-    const dayAppointments = mockAppointments.filter(
-      (apt) => apt.date === dateStr
-    );
+  const { data: invoices = [] } = useQuery('reports-invoices', () =>
+    billingApi.invoices().then((r) => r.data)
+  );
+  const { data: appointments = [] } = useQuery('reports-appointments', () =>
+    appointmentsApi.list().then((r) => r.data)
+  );
+  const { data: patients = [] } = useQuery('reports-patients', () =>
+    patientsApi.list().then((r) => r.data)
+  );
+  const { data: stats } = useQuery('reports-dashboard', () =>
+    dashboardApi.summary().then((r) => r.data)
+  );
 
-    return {
-      date: format(date, 'dd/MM'),
-      revenue: dayInvoices.reduce((sum, inv) => sum + inv.total, 0),
-      visits: dayAppointments.filter((apt) => apt.status === 'completed').length,
-      appointments: dayAppointments.length,
-    };
-  });
+  const dailyData = useMemo(() => {
+    return eachDayOfInterval({
+      start: startOfMonth(selectedDate),
+      end: endOfMonth(selectedDate),
+    }).map((date) => {
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const dayInvoices = invoices.filter(
+        (inv) => format(new Date(inv.createdAt), 'yyyy-MM-dd') === dateStr
+      );
+      const dayAppointments = appointments.filter(
+        (apt) => appointmentDateKey(apt.date) === dateStr
+      );
 
-  const monthlyData = Array.from({ length: 12 }, (_, i) => {
-    const month = i + 1;
-    return {
-      month: `شهر ${month}`,
-      revenue: Math.floor(Math.random() * 50000) + 30000,
-      visits: Math.floor(Math.random() * 100) + 50,
-    };
-  });
+      return {
+        date: format(date, 'dd/MM'),
+        revenue: dayInvoices.reduce((sum, inv) => sum + inv.paid, 0),
+        visits: dayAppointments.filter((apt) => apt.status === 'completed').length,
+        appointments: dayAppointments.length,
+      };
+    });
+  }, [selectedDate, invoices, appointments]);
 
-  const totalRevenue = mockInvoices.reduce((sum, inv) => sum + inv.total, 0);
-  const totalVisits = mockAppointments.filter((apt) => apt.status === 'completed').length;
-  const activePregnancies = mockPatients.filter((p) => p.isPregnant).length;
-  const totalPatients = mockPatients.length;
+  const monthlyData = useMemo(() => {
+    const months = Array.from({ length: 12 }, (_, i) => i + 1);
+    const year = selectedDate.getFullYear();
+    return months.map((month) => {
+      const monthInvoices = invoices.filter((inv) => {
+        const d = new Date(inv.createdAt);
+        return d.getFullYear() === year && d.getMonth() + 1 === month;
+      });
+      const monthAppointments = appointments.filter((apt) => {
+        const d =
+          typeof apt.date === 'string' ? parseISO(apt.date.split('T')[0]) : new Date(apt.date);
+        return d.getFullYear() === year && d.getMonth() + 1 === month;
+      });
+      return {
+        month: `شهر ${month}`,
+        revenue: monthInvoices.reduce((sum, inv) => sum + inv.paid, 0),
+        visits: monthAppointments.filter((apt) => apt.status === 'completed').length,
+      };
+    });
+  }, [selectedDate, invoices, appointments]);
+
+  const totalRevenue = invoices.reduce((sum, inv) => sum + inv.paid, 0);
+  const totalVisits = appointments.filter((apt) => apt.status === 'completed').length;
+  const activePregnancies = stats?.activePregnancies ?? patients.filter((p) => p.isPregnant).length;
+  const totalPatients = patients.length;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">التقارير</h1>
-          <p className="text-gray-600 mt-1">تقارير مالية وإحصائية</p>
+          <p className="text-gray-600 mt-1">تقارير مالية وإحصائية من بيانات العيادة الفعلية</p>
         </div>
         <div className="flex items-center gap-3">
           <select
@@ -70,19 +101,18 @@ export default function Reports() {
             <option value="daily">تقرير يومي</option>
             <option value="monthly">تقرير شهري</option>
           </select>
-          <button className="btn-secondary flex items-center gap-2">
+          <button type="button" className="btn-secondary flex items-center gap-2" disabled>
             <Download className="w-5 h-5" />
             تصدير
           </button>
         </div>
       </div>
 
-      {/* إحصائيات سريعة */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="card bg-green-50 border-green-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 mb-1">إجمالي الإيرادات</p>
+              <p className="text-sm text-gray-600 mb-1">إجمالي المحصّل</p>
               <p className="text-2xl font-bold text-green-600">
                 {totalRevenue.toLocaleString()} ج.م
               </p>
@@ -94,7 +124,7 @@ export default function Reports() {
         <div className="card bg-blue-50 border-blue-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 mb-1">عدد الزيارات</p>
+              <p className="text-sm text-gray-600 mb-1">زيارات مكتملة</p>
               <p className="text-2xl font-bold text-blue-600">{totalVisits}</p>
             </div>
             <Users className="w-8 h-8 text-blue-400" />
@@ -114,7 +144,7 @@ export default function Reports() {
         <div className="card bg-purple-50 border-purple-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 mb-1">إجمالي المرضى</p>
+              <p className="text-sm text-gray-600 mb-1">إجمالي المريضات</p>
               <p className="text-2xl font-bold text-purple-600">{totalPatients}</p>
             </div>
             <Users className="w-8 h-8 text-purple-400" />
@@ -122,9 +152,7 @@ export default function Reports() {
         </div>
       </div>
 
-      {/* الرسوم البيانية */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* رسم الإيرادات */}
         <div className="card">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
             <TrendingUp className="w-5 h-5" />
@@ -163,7 +191,6 @@ export default function Reports() {
           </ResponsiveContainer>
         </div>
 
-        {/* رسم عدد الحالات */}
         <div className="card">
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
             <Users className="w-5 h-5" />
@@ -194,37 +221,23 @@ export default function Reports() {
         </div>
       </div>
 
-      {/* تقرير تفصيلي */}
       <div className="card">
-        <h2 className="text-xl font-semibold mb-4">التقرير التفصيلي</h2>
+        <h2 className="text-xl font-semibold mb-4">التقرير التفصيلي (آخر 7 أيام)</h2>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                  التاريخ
-                </th>
-                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                  الإيرادات
-                </th>
-                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                  عدد الزيارات
-                </th>
-                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                  عدد المواعيد
-                </th>
+                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">التاريخ</th>
+                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">الإيرادات</th>
+                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">الزيارات</th>
+                <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">المواعيد</th>
               </tr>
             </thead>
             <tbody>
-              {dailyData.slice(-7).map((day, idx) => (
-                <tr
-                  key={idx}
-                  className="border-b border-gray-100 hover:bg-gray-50"
-                >
+              {dailyData.slice(-7).map((day) => (
+                <tr key={day.date} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="py-4 px-4">{day.date}</td>
-                  <td className="py-4 px-4 font-medium">
-                    {day.revenue.toLocaleString()} ج.م
-                  </td>
+                  <td className="py-4 px-4 font-medium">{day.revenue.toLocaleString()} ج.م</td>
                   <td className="py-4 px-4">{day.visits}</td>
                   <td className="py-4 px-4">{day.appointments}</td>
                 </tr>
@@ -236,4 +249,3 @@ export default function Reports() {
     </div>
   );
 }
-

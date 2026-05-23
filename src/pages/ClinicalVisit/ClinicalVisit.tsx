@@ -1,14 +1,34 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
+import { useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
-import { Save, FileText, Upload, User, Calendar, AlertTriangle, Baby, History, FlaskConical, Image as ImageIcon } from 'lucide-react';
+import {
+  Save,
+  FileText,
+  Upload,
+  User,
+  Calendar,
+  AlertTriangle,
+  Baby,
+  History,
+  FlaskConical,
+  Image as ImageIcon,
+  Plus,
+  Pill,
+} from 'lucide-react';
 import { VisitType } from '@/types';
-import PrescriptionModal from '@/components/ClinicalVisit/PrescriptionModal';
+import VisitPrescriptionsPanel from '@/components/ClinicalVisit/VisitPrescriptionsPanel';
+import VisitTypeSelect from '@/components/ClinicalVisit/VisitTypeSelect';
 import VisitTemplates, { VisitTemplate } from '@/components/ClinicalVisit/VisitTemplates';
 import PregnancyCalculator from '@/components/ClinicalVisit/PregnancyCalculator';
 import MediaGallery from '@/components/Media/MediaGallery';
-import { mockAppointments, getPatientById, getPatientVisits, mockLabTests } from '@/data/mockData';
+import { appointmentsApi } from '@/api/appointments';
+import { patientsApi } from '@/api/patients';
+import { visitsApi } from '@/api/visits';
+import NewLabRequestModal from '@/components/Labs/NewLabRequestModal';
+import UploadLabResultModal from '@/components/Labs/UploadLabResultModal';
+import { LabTest } from '@/types';
 
 interface VisitFormData {
   complaint: string;
@@ -25,18 +45,49 @@ interface VisitFormData {
 export default function ClinicalVisit() {
   const { appointmentId } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { register, handleSubmit, setValue } = useForm<VisitFormData>();
-  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [activeTab, setActiveTab] = useState<'current' | 'history' | 'labs' | 'media'>('current');
+  const [activeTab, setActiveTab] = useState<
+    'current' | 'history' | 'prescriptions' | 'labs' | 'media'
+  >('current');
   const [visitType, setVisitType] = useState<VisitType>(VisitType.FOLLOW_UP);
+  const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
+  const [showLabModal, setShowLabModal] = useState(false);
+  const [uploadLab, setUploadLab] = useState<LabTest | null>(null);
+
+  const refreshTimeline = () => {
+    if (patientId) queryClient.invalidateQueries(['timeline', patientId]);
+    queryClient.invalidateQueries('lab-tests');
+    queryClient.invalidateQueries('prescriptions');
+  };
   const isPregnancyCheck = visitType === VisitType.PREGNANCY_CHECK;
 
-  // الحصول على بيانات الموعد والمريضة
-  const appointment = mockAppointments.find((apt) => apt.id === appointmentId);
-  const patient = appointment ? getPatientById(appointment.patientId) : null;
-  const patientVisits = patient ? getPatientVisits(patient.id) : [];
-  const patientLabs = patient ? mockLabTests.filter((lab) => lab.patientId === patient.id) : [];
+  const { data: appointment, isLoading } = useQuery(
+    ['appointment', appointmentId],
+    () => appointmentsApi.get(appointmentId!).then((r) => r.data),
+    { enabled: !!appointmentId }
+  );
+
+  const patient = appointment?.patient ?? null;
+  const patientId = appointment?.patientId ?? patient?.id;
+
+  const { data: timeline } = useQuery(
+    ['timeline', patientId],
+    () => patientsApi.timeline(patientId!).then((r) => r.data),
+    { enabled: !!patientId }
+  );
+
+  const patientVisits = timeline?.visits ?? [];
+  const patientLabs = timeline?.labTests ?? [];
+  const patientPrescriptions = timeline?.prescriptions ?? [];
+  const patientAttachments = timeline?.attachments ?? [];
+  const prescriptionImages = (patientAttachments as { type: string; visitId?: string }[]).filter(
+    (a) => a.type === 'prescription'
+  );
+  const visitPrescriptions = savedVisitId
+    ? (patientPrescriptions as { visitId?: string }[]).filter((p) => p.visitId === savedVisitId)
+    : [];
 
   const handleTemplateSelect = (template: VisitTemplate) => {
     setValue('complaint', template.complaint);
@@ -52,11 +103,37 @@ export default function ClinicalVisit() {
   };
 
   const onSubmit = async (data: VisitFormData) => {
-    // حفظ بيانات الكشف
-    console.log(data);
-    toast.success('تم حفظ الكشف بنجاح');
-    setShowPrescriptionModal(true);
+    if (!patientId) return;
+    try {
+      const { data: visit } = await visitsApi.create({
+        patientId,
+        appointmentId,
+        type: visitType,
+        complaint: data.complaint,
+        examination: data.examination,
+        diagnosis: data.diagnosis,
+        treatmentPlan: data.treatmentPlan,
+        pregnancyNotes: isPregnancyCheck
+          ? {
+              week: data.pregnancyWeek,
+              weight: data.weight,
+              bloodPressure: data.bloodPressure,
+              fetalHeartRate: data.fetalHeartRate,
+              notes: data.pregnancyNotes,
+            }
+          : undefined,
+      });
+      setSavedVisitId(visit.id);
+      toast.success('تم حفظ الكشف — يمكنك إضافة الروشتة من تبويب «الروشتة»');
+      setActiveTab('prescriptions');
+    } catch {
+      toast.error('تعذر حفظ الكشف');
+    }
   };
+
+  if (isLoading) {
+    return <p className="text-gray-500 p-6">جاري التحميل...</p>;
+  }
 
   if (!patient || !appointment) {
     return (
@@ -102,6 +179,7 @@ export default function ClinicalVisit() {
             </div>
           </div>
           <button
+            type="button"
             onClick={() => setShowTemplates(true)}
             className="btn-secondary flex items-center gap-2"
           >
@@ -115,6 +193,7 @@ export default function ClinicalVisit() {
       <div className="card p-0">
         <div className="flex border-b">
           <button
+            type="button"
             onClick={() => setActiveTab('current')}
             className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
               activeTab === 'current'
@@ -125,6 +204,7 @@ export default function ClinicalVisit() {
             الزيارة الحالية
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('history')}
             className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
               activeTab === 'history'
@@ -136,6 +216,19 @@ export default function ClinicalVisit() {
             التاريخ السابق
           </button>
           <button
+            type="button"
+            onClick={() => setActiveTab('prescriptions')}
+            className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
+              activeTab === 'prescriptions'
+                ? 'text-primary-600 border-b-2 border-primary-600'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Pill className="w-4 h-4 inline-block ml-2" />
+            الروشتة
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('labs')}
             className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
               activeTab === 'labs'
@@ -147,6 +240,7 @@ export default function ClinicalVisit() {
             التحاليل
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('media')}
             className={`flex-1 px-6 py-4 text-center font-medium transition-colors ${
               activeTab === 'media'
@@ -177,16 +271,7 @@ export default function ClinicalVisit() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               نوع الكشف
             </label>
-            <select
-              value={visitType}
-              onChange={(e) => setVisitType(e.target.value as VisitType)}
-              className="input-field"
-            >
-              <option value={VisitType.NEW}>كشف جديد</option>
-              <option value={VisitType.FOLLOW_UP}>متابعة</option>
-              <option value={VisitType.PREGNANCY_CHECK}>متابعة حمل</option>
-              <option value={VisitType.POST_DELIVERY}>بعد الولادة</option>
-            </select>
+            <VisitTypeSelect value={visitType} onChange={setVisitType} />
           </div>
 
         {/* الشكوى */}
@@ -359,7 +444,7 @@ export default function ClinicalVisit() {
           <h2 className="text-xl font-semibold mb-4">الزيارات السابقة</h2>
           <div className="space-y-4">
             {patientVisits.length > 0 ? (
-              patientVisits.map((visit) => (
+              patientVisits.map((visit: { id: string; date: string; type?: string; complaint?: string; diagnosis?: string }) => (
                 <div key={visit.id} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-gray-600">{visit.date}</span>
@@ -388,15 +473,69 @@ export default function ClinicalVisit() {
         </div>
       )}
 
-      {activeTab === 'labs' && (
+      {activeTab === 'prescriptions' && patient && (
+        <>
+          {!savedVisitId ? (
+            <div className="card bg-amber-50 border-amber-200">
+              <p className="text-amber-900 mb-3">
+                احفظي الكشف أولاً من تبويب «الزيارة الحالية»، ثم أضيفي الروشتة هنا (كتابة يدوية أو
+                رفع صورة).
+              </p>
+              <button
+                type="button"
+                onClick={handleSubmit(onSubmit)}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                حفظ الكشف الآن
+              </button>
+            </div>
+          ) : (
+            <VisitPrescriptionsPanel
+              visitId={savedVisitId}
+              patientId={patient.id}
+              patientName={patient.name}
+              doctorId={appointment.doctorId}
+              pregnancyWeek={patient.pregnancyWeek}
+              visitPrescriptions={visitPrescriptions as never[]}
+              prescriptionImages={prescriptionImages as never[]}
+              onSaved={refreshTimeline}
+            />
+          )}
+        </>
+      )}
+
+      {activeTab === 'labs' && patient && (
         <div className="card">
-          <h2 className="text-xl font-semibold mb-4">التحاليل</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">التحاليل</h2>
+            <button
+              type="button"
+              onClick={() => setShowLabModal(true)}
+              className="btn-primary text-sm flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" />
+              طلب تحليل
+            </button>
+          </div>
           <div className="space-y-4">
             {patientLabs.length > 0 ? (
-              patientLabs.map((lab) => (
+              patientLabs.map((lab: {
+                id: string;
+                testName: string;
+                status: string;
+                attachment?: string | null;
+                results?: { value?: string; notes?: string };
+              }) => (
                 <div key={lab.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                     <h3 className="font-medium">{lab.testName}</h3>
+                    {(lab.results?.value?.includes('مرفوعة من المريضة') ||
+                      lab.results?.notes?.includes('بانتظار مراجعة')) && (
+                      <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800 order-last sm:order-none">
+                        مرفوع من المريضة
+                      </span>
+                    )}
                     <span className={`text-xs px-2 py-1 rounded ${
                       lab.status === 'completed' ? 'bg-green-100 text-green-800' :
                       lab.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
@@ -407,7 +546,34 @@ export default function ClinicalVisit() {
                       {lab.status === 'requested' && 'مطلوب'}
                     </span>
                   </div>
-                  {lab.results && (
+                  {lab.attachment && (
+                    <div className="mt-3">
+                      {lab.attachment.toLowerCase().endsWith('.pdf') ? (
+                        <a
+                          href={lab.attachment}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary-600 hover:underline"
+                        >
+                          عرض ملف التحليل المرفوع
+                        </a>
+                      ) : (
+                        <a
+                          href={lab.attachment}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block rounded-lg overflow-hidden border border-gray-200 max-w-sm"
+                        >
+                          <img
+                            src={lab.attachment}
+                            alt={lab.testName}
+                            className="w-full h-auto max-h-64 object-contain bg-gray-50"
+                          />
+                        </a>
+                      )}
+                    </div>
+                  )}
+                  {lab.results?.value && (
                     <div className="mt-2">
                       <p className="text-sm">
                         <span className="font-medium">النتيجة:</span> {lab.results.value}
@@ -416,6 +582,16 @@ export default function ClinicalVisit() {
                         <p className="text-sm text-gray-600 mt-1">{lab.results.notes}</p>
                       )}
                     </div>
+                  )}
+                  {lab.status !== 'completed' &&
+                    !lab.results?.value?.includes('مرفوعة من المريضة') && (
+                    <button
+                      type="button"
+                      onClick={() => setUploadLab(lab as LabTest)}
+                      className="btn-secondary text-xs mt-2 py-1 px-2"
+                    >
+                      رفع النتيجة
+                    </button>
                   )}
                 </div>
               ))
@@ -437,14 +613,20 @@ export default function ClinicalVisit() {
         />
       )}
 
-      {showPrescriptionModal && (
-        <PrescriptionModal
-          onClose={() => {
-            setShowPrescriptionModal(false);
-            navigate('/appointments');
-          }}
-          visitId="1"
-          patientId={patient.id}
+      {showLabModal && patient && (
+        <NewLabRequestModal
+          defaultPatientId={patient.id}
+          visitId={savedVisitId ?? undefined}
+          onClose={() => setShowLabModal(false)}
+          onCreated={refreshTimeline}
+        />
+      )}
+
+      {uploadLab && (
+        <UploadLabResultModal
+          lab={{ ...uploadLab, patient: { name: patient?.name ?? '' } }}
+          onClose={() => setUploadLab(null)}
+          onSaved={refreshTimeline}
         />
       )}
     </div>

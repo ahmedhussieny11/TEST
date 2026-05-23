@@ -1,112 +1,164 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { UserPlus, Mail, Phone, ClipboardCheck } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { UserPlus, ArrowLeft, AlertCircle } from 'lucide-react';
 import { usePatientAuthStore } from '../store/patientAuthStore';
+import {
+  readRedirectParam,
+  setPatientRedirect,
+  getPatientRedirect,
+  clearPatientRedirect,
+} from '../utils/patientRedirect';
+import PatientAuthShell from '../components/PatientAuthShell';
 
 export default function PatientRegister() {
   const navigate = useNavigate();
-  const { startRegistration, error, resetError } = usePatientAuthStore();
+  const [searchParams] = useSearchParams();
+  const { startRegistration, error, resetError, isAuthenticated } = usePatientAuthStore();
+  const redirectTo = readRedirectParam(searchParams.toString()) || '/patient/dashboard';
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [age, setAge] = useState('');
+  const [address, setAddress] = useState('');
   const [email, setEmail] = useState('');
-  const [devOtp, setDevOtp] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     resetError();
-  }, [resetError]);
+    setPatientRedirect(redirectTo);
+  }, [resetError, redirectTo]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (isAuthenticated) navigate(redirectTo, { replace: true });
+  }, [isAuthenticated, navigate, redirectTo]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !phone) return;
-    const result = startRegistration(name, phone, email || undefined);
-    setDevOtp(result.otp);
-    navigate('/patient/otp');
+    if (!name.trim() || !phone.trim() || !age.trim() || !address.trim()) return;
+    const ageNum = parseInt(age, 10);
+    if (Number.isNaN(ageNum) || ageNum < 1 || ageNum > 120) return;
+    setLoading(true);
+    const success = await startRegistration(
+      name.trim(),
+      phone.trim(),
+      email.trim() || undefined,
+      ageNum,
+      address.trim()
+    );
+    setLoading(false);
+    if (success) {
+      const target = getPatientRedirect(redirectTo);
+      clearPatientRedirect();
+      navigate(target, { replace: true });
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary-50 to-white flex items-center justify-center px-4">
-      <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl p-8 border border-gray-100 text-right">
-        <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-100 mb-4">
-            <UserPlus className="w-8 h-8 text-primary-600" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">إنشاء حساب للمتابعة</h1>
-          <p className="text-gray-500">
-            سجلي بياناتك الأساسية لتحصلي على لوحة متابعة مخصصة وكل الزيارات والتحاليل في مكان واحد.
+    <PatientAuthShell
+      title="إنشاء حساب"
+      subtitle="بيانات بسيطة — دخول فوري بدون رمز تحقق"
+      icon={<UserPlus className="w-7 h-7 text-white" />}
+      footer={
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 text-center text-sm text-gray-600">
+          <p>
+            لديك حساب بالفعل؟{' '}
+            <Link
+              to={`/patient/login?redirect=${encodeURIComponent(redirectTo)}`}
+              className="text-primary-600 font-bold hover:underline"
+            >
+              سجّلي دخولك
+            </Link>
           </p>
         </div>
+      }
+    >
+      <ul className="text-xs text-gray-500 space-y-1.5 mb-6 bg-slate-50 rounded-xl p-4 border border-slate-100">
+        <li>✓ حجز أسرع بدون إعادة كتابة بياناتك</li>
+        <li>✓ متابعة المواعيد والروشتات</li>
+        <li>✓ مجاني — بدون اشتراك</li>
+      </ul>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">الاسم الكامل</label>
-            <div className="relative">
-              <UserPlus className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="مثال: هدى علي"
-                className="input-field text-right"
-                required
-              />
-            </div>
-          </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">الاسم الكامل</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="مثال: هدى علي"
+            className="input-field"
+            required
+          />
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">رقم الجوال</label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="01012345678"
-                className="input-field text-right"
-                required
-              />
-            </div>
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">رقم الجوال</label>
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="01xxxxxxxxx"
+            className="input-field"
+            dir="ltr"
+            required
+          />
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">البريد الإلكتروني (اختياري)</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="example@mail.com"
-                className="input-field text-right"
-              />
-            </div>
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">العمر</label>
+          <input
+            type="number"
+            min={1}
+            max={120}
+            value={age}
+            onChange={(e) => setAge(e.target.value)}
+            placeholder="مثال: 28"
+            className="input-field"
+            required
+          />
+        </div>
 
-          <button type="submit" className="btn-primary w-full py-3 text-lg flex items-center justify-center gap-2">
-            إنشاء الحساب
-            <ClipboardCheck className="w-5 h-5" />
-          </button>
-        </form>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">العنوان</label>
+          <input
+            type="text"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="مثال: القاهرة — المعادي"
+            className="input-field"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            البريد الإلكتروني <span className="text-gray-400 font-normal">(اختياري)</span>
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="example@mail.com"
+            className="input-field"
+            dir="ltr"
+          />
+        </div>
 
         {error && (
-          <div className="mt-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-2xl px-4 py-3">
-            {error}
+          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
           </div>
         )}
 
-        {devOtp && (
-          <div className="mt-4 text-xs text-primary-600 bg-primary-50 border border-primary-100 rounded-2xl px-4 py-3 text-center">
-            (للتجربة) رمز OTP الحالي: <span className="font-semibold">{devOtp}</span>
-          </div>
-        )}
-
-        <p className="text-center text-sm text-gray-500 mt-6">
-          لديك حساب بالفعل؟{' '}
-          <Link to="/patient/login" className="text-primary-600 font-semibold">
-            سجلي الدخول
-          </Link>
-        </p>
-      </div>
-    </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="btn-primary w-full py-3.5 text-lg flex items-center justify-center gap-2 mt-2 disabled:opacity-60"
+        >
+          {loading ? 'جاري إنشاء الحساب...' : 'إنشاء الحساب'}
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+      </form>
+    </PatientAuthShell>
   );
 }
-

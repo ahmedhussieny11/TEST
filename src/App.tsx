@@ -16,13 +16,16 @@ import Settings from './pages/Settings/Settings';
 import Users from './pages/Users/Users';
 import Expenses from './pages/Expenses/Expenses';
 import Reports from './pages/Reports/Reports';
+import LiveQueueTracker from './pages/Queue/LiveQueueTracker';
 import LandingPage from './patient/LandingPage';
 import BookingWizard from './patient/Booking/BookingWizard';
 import PatientLogin from './patient/Auth/Login';
 import PatientRegister from './patient/Auth/Register';
-import PatientOtp from './patient/Auth/Otp';
 import PatientDashboard from './patient/Dashboard/PatientDashboard';
 import MyRecords from './patient/Records/MyRecords';
+import PatientLiveQueue from './patient/Queue/PatientLiveQueue';
+import PatientProfile from './patient/Profile/PatientProfile';
+import MobileCapturePage from './pages/Capture/MobileCapturePage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -50,9 +53,10 @@ function App() {
       {/* موقع المريضة */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/book" element={<BookingWizard />} />
+      <Route path="/capture/:code" element={<MobileCapturePage />} />
       <Route path="/patient/login" element={<PatientLogin />} />
       <Route path="/patient/register" element={<PatientRegister />} />
-      <Route path="/patient/otp" element={<PatientOtp />} />
+      <Route path="/patient/otp" element={<Navigate to="/patient/login" replace />} />
       <Route
         path="/patient/dashboard"
         element={
@@ -69,12 +73,29 @@ function App() {
           </PatientRoute>
         }
       />
+      <Route
+        path="/patient/queue"
+        element={
+          <PatientRoute>
+            <PatientLiveQueue />
+          </PatientRoute>
+        }
+      />
+      <Route
+        path="/patient/profile"
+        element={
+          <PatientRoute>
+            <PatientProfile />
+          </PatientRoute>
+        }
+      />
 
       {/* لوحة التحكم (الموظفين) */}
       <Route path="/login" element={<Login />} />
       <Route path="/app" element={<AppLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="appointments" element={<Appointments />} />
+        <Route path="queue" element={<LiveQueueTracker />} />
         <Route path="patients" element={<Patients />} />
         <Route path="patients/new" element={<NewPatient />} />
         <Route path="patients/:id" element={<PatientDetails />} />

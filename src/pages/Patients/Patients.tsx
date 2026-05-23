@@ -1,21 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from 'react-query';
 import { Plus, Search, User, Phone, Calendar, Baby, MapPin } from 'lucide-react';
-import { mockPatients } from '@/data/mockData';
+import { patientsApi } from '@/api/patients';
+import { Patient } from '@/types';
 
 export default function Patients() {
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredPatients = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return mockPatients;
-    return mockPatients.filter(
-      (patient) =>
-        patient.name.toLowerCase().includes(q) ||
-        patient.phone.includes(q) ||
-        (patient.address?.toLowerCase().includes(q) ?? false)
-    );
-  }, [searchQuery]);
+  const { data: patients = [], isLoading, isError } = useQuery(
+    ['patients', searchQuery],
+    () => patientsApi.list(searchQuery || undefined).then((r) => r.data),
+    { keepPreviousData: true }
+  );
+
+  const filteredPatients = patients as Patient[];
 
   return (
     <div className="space-y-6">
@@ -44,7 +43,13 @@ export default function Patients() {
         </div>
       </div>
 
-      {/* قائمة المرضى */}
+      {isLoading && <p className="text-gray-500">جاري التحميل...</p>}
+      {isError && (
+        <p className="text-red-600 text-sm">
+          تعذر تحميل قائمة المرضى — تأكدي من تشغيل الخادم (backend)
+        </p>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredPatients.map((patient) => (
           <Link
@@ -70,10 +75,12 @@ export default function Patients() {
                     <Phone className="w-4 h-4" />
                     {patient.phone}
                   </p>
-                  <p className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {new Date(patient.dateOfBirth).toLocaleDateString('ar-EG')}
-                  </p>
+                  {patient.dateOfBirth && (
+                    <p className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      {new Date(patient.dateOfBirth).toLocaleDateString('ar-EG')}
+                    </p>
+                  )}
                   {patient.address && (
                     <p className="flex items-center gap-2">
                       <MapPin className="w-4 h-4" />

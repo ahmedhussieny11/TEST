@@ -69,17 +69,31 @@ export interface Patient {
   updatedAt: string;
 }
 
+export interface AppointmentInvoiceSummary {
+  id: string;
+  total: number;
+  paid: number;
+  remaining: number;
+  status: 'paid' | 'partial' | 'unpaid';
+}
+
 // الموعد
 export interface Appointment {
   id: string;
   patientId: string;
   patient?: Patient;
   doctorId: string;
+  doctor?: { id: string; name: string };
   date: string; // ISO date string
   time: string; // HH:mm format
   status: AppointmentStatus;
   type: VisitType;
   notes?: string;
+  serviceId?: string;
+  service?: { id: string; name: string; price: number };
+  bookingSource?: string;
+  invoice?: AppointmentInvoiceSummary | null;
+  queueEntry?: { id: string; status: string } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -155,7 +169,10 @@ export interface LabTest {
 export interface Invoice {
   id: string;
   patientId: string;
+  patient?: { id: string; name: string; phone: string };
   visitId?: string;
+  appointmentId?: string;
+  appointment?: { id: string; date: string; time: string; notes?: string; status?: string };
   items: InvoiceItem[];
   total: number;
   paid: number;
@@ -230,8 +247,17 @@ export interface PatientRegistrationPayload {
   pregnancyWeek?: number;
 }
 
+export interface BookingServiceSetting {
+  id: string;
+  name: string;
+  price: number;
+  showInBooking: boolean;
+}
+
 // إعدادات المواعيد
 export interface AppointmentSettings {
+  clinicName?: string;
+  clinicTagline?: string | null;
   slotsPerHour: number;
   workingHours: {
     start: string; // HH:mm
@@ -244,6 +270,7 @@ export interface AppointmentSettings {
     pregnancyCheck: number;
     sonar: number;
   };
+  bookingServices?: BookingServiceSetting[];
 }
 
 // Template للكشف
@@ -256,6 +283,20 @@ export interface VisitTemplate {
   diagnosis?: string;
   treatmentPlan?: string;
   createdBy: string;
+}
+
+export interface PatientCardData {
+  id: string;
+  name: string;
+  fileNumber: string;
+  pregnancyWeek?: number;
+  nextAppointment?: {
+    date: string;
+    time: string;
+    service: string;
+  };
+  status: 'waiting' | 'in_exam' | 'scheduled' | 'new' | 'checked';
+  notes?: string;
 }
 
 // Dashboard Statistics

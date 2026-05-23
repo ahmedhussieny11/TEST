@@ -1,4 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
+import { useQuery } from 'react-query';
+import { patientsApi } from '@/api/patients';
 import {
   Phone,
   Calendar,
@@ -9,17 +11,10 @@ import {
   FlaskConical,
   Pill,
 } from 'lucide-react';
-import {
-  getPatientById,
-  getPatientVisits,
-  getPregnancyTimeline,
-  getMonthlyCarePlan,
-  getPregnancyProfile,
-  mockLabTests,
-  mockPrescriptions,
-} from '@/data/mockData';
 import { format } from 'date-fns';
 import { MonthlyCareTask } from '@/types';
+import MediaGallery from '@/components/Media/MediaGallery';
+import MedicalFilePreview from '@/components/Media/MedicalFilePreview';
 
 const careStatusClasses: Record<MonthlyCareTask['status'], string> = {
   pending: 'bg-yellow-50 text-yellow-700 border border-yellow-100',
@@ -43,16 +38,50 @@ const careTypeText: Record<MonthlyCareTask['type'], string> = {
 
 export default function PatientDetails() {
   const { id } = useParams();
-  const patient = id ? getPatientById(id) : undefined;
-  const visits = patient ? getPatientVisits(patient.id) : [];
-  const labTests = patient ? mockLabTests.filter((lab) => lab.patientId === patient.id) : [];
-  const prescriptions = patient
-    ? mockPrescriptions.filter((pres) => pres.patientId === patient.id)
-    : [];
-  const pregnancyProfile = patient ? getPregnancyProfile(patient.id) : undefined;
-  const pregnancyTimeline = patient?.isPregnant ? getPregnancyTimeline(patient.id) : [];
-  const carePlan = patient?.isPregnant ? getMonthlyCarePlan(patient.id) : [];
-  const currentMonth = patient?.pregnancyWeek ? Math.ceil(patient.pregnancyWeek / 4) : undefined;
+
+  const { data: patient, isLoading } = useQuery(
+    ['patient', id],
+    () => patientsApi.get(id!).then((r) => r.data),
+    { enabled: !!id }
+  );
+
+  const { data: timeline } = useQuery(
+    ['timeline', id],
+    () => patientsApi.timeline(id!).then((r) => r.data),
+    { enabled: !!id }
+  );
+
+  const visits = timeline?.visits ?? [];
+  const labTests = timeline?.labTests ?? [];
+  const prescriptions = timeline?.prescriptions ?? [];
+  const attachments = timeline?.attachments ?? [];
+
+  const pregnancies = (patient as { pregnancies?: { dueDate: string; currentWeek: number; lmpDate: string }[] })?.pregnancies ?? [];
+  const pregnancyProfile = pregnancies[0] as {
+    currentWeek: number;
+    dueDate: string;
+    lmpDate: string;
+    riskLevel?: string;
+  } | undefined;
+  const pregnancyTimeline = [] as {
+    id: string;
+    month: number;
+    title: string;
+    description: string;
+    weekStart: number;
+    weekEnd: number;
+    fetalWeight: string;
+    fetalLength: string;
+    highlights: string[];
+  }[];
+  const carePlan = [] as MonthlyCareTask[];
+  const currentMonth = pregnancyProfile?.currentWeek
+    ? Math.ceil(pregnancyProfile.currentWeek / 4)
+    : undefined;
+
+  if (isLoading) {
+    return <p className="text-gray-500 p-6">جاري التحميل...</p>;
+  }
 
   if (!patient) {
     return (
@@ -75,9 +104,14 @@ export default function PatientDetails() {
           <h1 className="text-3xl font-bold text-gray-900">{patient.name}</h1>
           <p className="text-gray-600 mt-1">ملف المريضة الطبي</p>
         </div>
-        <Link to="/app/appointments" className="btn-primary">
-          تسجيل كشف جديد
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link to={`/app/lab-tests?patientId=${patient.id}`} className="btn-secondary">
+            التحاليل
+          </Link>
+          <Link to="/app/appointments" className="btn-primary">
+            تسجيل كشف جديد
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -99,7 +133,9 @@ export default function PatientDetails() {
                 <div>
                   <p className="text-sm text-gray-600">تاريخ الميلاد</p>
                   <p className="font-medium">
-                    {format(new Date(patient.dateOfBirth), 'yyyy-MM-dd')}
+                    {patient.dateOfBirth
+                      ? format(new Date(patient.dateOfBirth), 'yyyy-MM-dd')
+                      : '—'}
                   </p>
                 </div>
               </div>
@@ -180,6 +216,33 @@ export default function PatientDetails() {
 
         {/* السجل الطبي */}
         <div className="lg:col-span-2 space-y-6">
+          <div className="card">
+            <h2 className="text-xl font-semibold mb-4">الصور والتحاليل المرفوعة</h2>
+            <div className="space-y-4 mb-6">
+              {labTests
+                .filter((lab: { attachment?: string | null }) => lab.attachment)
+                .map(
+                  (lab: {
+                    id: string;
+                    testName: string;
+                    attachment: string;
+                    status: string;
+                  }) => (
+                    <div key={lab.id} className="border border-gray-200 rounded-xl p-4">
+                      <p className="font-medium text-gray-900 mb-2">{lab.testName}</p>
+                      <MedicalFilePreview filePath={lab.attachment} title={lab.testName} />
+                    </div>
+                  )
+                )}
+              {labTests.filter((lab: { attachment?: string | null }) => lab.attachment)
+                .length === 0 && (
+                <p className="text-sm text-gray-500">لا توجد صور تحاليل مرفوعة بعد</p>
+              )}
+            </div>
+            <h3 className="text-lg font-semibold mb-3">كل الوسائط والسونار</h3>
+            <MediaGallery patientId={patient.id} readOnly />
+          </div>
+
           {/* الزيارات السابقة */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
@@ -192,7 +255,7 @@ export default function PatientDetails() {
 
             <div className="space-y-4">
               {visits.length ? (
-                visits.map((visit) => (
+                visits.map((visit: { id: string; date: string; complaint?: string; diagnosis?: string }) => (
                   <div key={visit.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
@@ -233,13 +296,28 @@ export default function PatientDetails() {
               </h2>
               <div className="space-y-3">
                 {labTests.length ? (
-                  labTests.map((lab) => (
+                  labTests.map(
+                    (lab: {
+                      id: string;
+                      testName: string;
+                      status: string;
+                      requestedDate?: string;
+                      attachment?: string | null;
+                    }) => (
                     <div key={lab.id} className="border border-gray-200 rounded-lg p-3">
                       <p className="font-medium">{lab.testName}</p>
                       <p className="text-xs text-gray-500">{lab.requestedDate}</p>
                       <span className="inline-block mt-2 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
                         {lab.status === 'completed' ? 'مكتمل' : lab.status === 'in_progress' ? 'قيد التنفيذ' : 'مطلوب'}
                       </span>
+                      {lab.attachment && (
+                        <div className="mt-2">
+                          <MedicalFilePreview
+                            filePath={lab.attachment}
+                            maxHeight="max-h-32"
+                          />
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -255,7 +333,7 @@ export default function PatientDetails() {
               </h2>
               <div className="space-y-3">
                 {prescriptions.length ? (
-                  prescriptions.map((pres) => (
+                  prescriptions.map((pres: { id: string; createdAt: string; medications: { id: string; name: string; dosage: string; frequency: string }[] }) => (
                     <div key={pres.id} className="border border-gray-200 rounded-lg p-3">
                       <p className="font-medium">روشتة #{pres.id}</p>
                       <p className="text-xs text-gray-500">{pres.createdAt}</p>
