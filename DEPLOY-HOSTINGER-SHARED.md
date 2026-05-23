@@ -41,8 +41,10 @@
 | `JWT_SECRET` | أي نص طويل عشوائي (مثلاً 32 حرف) |
 | `JWT_EXPIRES_IN` | `8h` |
 | `PORT` | `4000` |
-| `FRONTEND_URL` | `https://دومينك.com` |
-| `CORS_ORIGINS` | `https://دومينك.com,https://www.دومينك.com` |
+| `FRONTEND_URL` | `https://aqua-herring-301950.hostingersite.com` |
+| `CORS_ORIGINS` | `https://aqua-herring-301950.hostingersite.com` |
+
+> لو عندك دومين خاص لاحقاً، استبدلي الرابط في المتغيرين أعلاه.
 | `UPLOAD_DIR` | `./uploads` |
 
 > استبدلي `دومينك.com` بدومين Hostinger الحقيقي.
