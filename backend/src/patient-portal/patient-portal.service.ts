@@ -33,6 +33,9 @@ export class PatientPortalService {
   /** تسجيل دخول مباشر بالموبايل — بدون رمز OTP */
   async login(phone: string) {
     const normalized = this.patients.normalizePhone(phone);
+    if (normalized.length < 10) {
+      throw new BadRequestException('رقم الهاتف غير صحيح');
+    }
     let account = await this.prisma.patientAccount.findUnique({
       where: { phone: normalized },
       include: { patient: true },
@@ -74,12 +77,7 @@ export class PatientPortalService {
     age?: number;
     address?: string;
   }) {
-    const existingAccount = await this.prisma.patientAccount.findUnique({
-      where: { phone: data.phone },
-    });
-    if (existingAccount) {
-      throw new BadRequestException('رقم الهاتف مسجل مسبقاً — سجّلي الدخول');
-    }
+    const phone = this.patients.assertValidEgyptMobile(data.phone);
 
     const dateOfBirth =
       data.age != null && data.age > 0 && data.age < 120
@@ -87,12 +85,12 @@ export class PatientPortalService {
         : undefined;
     const address = data.address?.trim() || undefined;
 
-    let patient = await this.prisma.patient.findUnique({ where: { phone: data.phone } });
+    let patient = await this.prisma.patient.findUnique({ where: { phone } });
     if (patient) {
       patient = await this.prisma.patient.update({
         where: { id: patient.id },
         data: {
-          name: data.name,
+          name: data.name.trim(),
           email: data.email ?? patient.email,
           address: address ?? patient.address,
           dateOfBirth: dateOfBirth ?? patient.dateOfBirth,
@@ -101,8 +99,8 @@ export class PatientPortalService {
     } else {
       patient = await this.prisma.patient.create({
         data: {
-          name: data.name,
-          phone: data.phone,
+          name: data.name.trim(),
+          phone,
           email: data.email,
           address,
           dateOfBirth,
@@ -110,10 +108,8 @@ export class PatientPortalService {
       });
     }
 
-    await this.prisma.patientAccount.create({
-      data: { patientId: patient.id, phone: data.phone.trim(), status: 'active' },
-    });
-    return this.login(data.phone);
+    await this.patients.ensurePatientAccount(patient.id, phone);
+    return this.login(phone);
   }
 
   getDoctors() {

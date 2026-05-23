@@ -7,7 +7,22 @@ export class PatientsService {
   constructor(private prisma: PrismaService) {}
 
   normalizePhone(phone: string): string {
-    return phone.replace(/\s+/g, '').trim();
+    let digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('20') && digits.length >= 12) {
+      digits = `0${digits.slice(2)}`;
+    }
+    return digits.trim();
+  }
+
+  /** رقم مصر للموبايل: 11 رقم تبدأ بـ 01 */
+  assertValidEgyptMobile(phone: string) {
+    const n = this.normalizePhone(phone);
+    if (!/^01\d{9}$/.test(n)) {
+      throw new BadRequestException(
+        'رقم الهاتف غير صحيح — اكتبي 11 رقم مثل 01012345678',
+      );
+    }
+    return n;
   }
 
   /** حساب بوابة المريضة — يُنشأ تلقائياً عند التسجيل أو الحجز */

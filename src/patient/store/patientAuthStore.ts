@@ -1,7 +1,17 @@
+import axios from 'axios';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { patientPortalApi, PatientSession } from '@/api/patientPortal';
 import { setPatientToken } from '@/api/client';
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const msg = err.response?.data?.message;
+    if (typeof msg === 'string') return msg;
+    if (Array.isArray(msg)) return msg.join(' — ');
+  }
+  return fallback;
+}
 
 type AuthStage = 'idle' | 'authenticated';
 
@@ -76,8 +86,13 @@ export const usePatientAuthStore = create<PatientAuthState>()(
           });
           applySession(set, data);
           return true;
-        } catch {
-          set({ error: 'تعذر إنشاء الحساب — قد يكون الرقم مسجلاً مسبقاً' });
+        } catch (err) {
+          set({
+            error: apiErrorMessage(
+              err,
+              'تعذر إنشاء الحساب — تحققي من رقم الجوال (11 رقم)'
+            ),
+          });
           return false;
         }
       },
@@ -86,8 +101,10 @@ export const usePatientAuthStore = create<PatientAuthState>()(
           const { data } = await patientPortalApi.login(phone);
           applySession(set, data);
           return true;
-        } catch {
-          set({ error: 'لا يوجد حساب بهذا الرقم' });
+        } catch (err) {
+          set({
+            error: apiErrorMessage(err, 'لا يوجد حساب بهذا الرقم — أنشئي حساباً جديداً'),
+          });
           return false;
         }
       },

@@ -96,11 +96,13 @@ export default function PatientRegister() {
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="01xxxxxxxxx"
+            placeholder="01012345678"
             className="input-field"
             dir="ltr"
+            maxLength={11}
             required
           />
+          <p className="text-xs text-gray-500 mt-1">11 رقم — يبدأ بـ 01</p>
         </div>
 
         <div>

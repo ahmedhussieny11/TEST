@@ -28,12 +28,19 @@ export default function BookingWizard() {
     }
   }, [isAuthenticated, patient]);
 
-  const { data: config } = useQuery('booking-config', () =>
-    publicBookingApi.getConfig().then((r) => r.data)
-  );
+  const {
+    data: config,
+    isLoading: configLoading,
+    isError: configError,
+    refetch: refetchConfig,
+  } = useQuery('booking-config', () => publicBookingApi.getConfig().then((r) => r.data), {
+    retry: 2,
+  });
 
-  const doctorId = config?.doctors[0]?.id;
-  const selectedService = config?.services.find((s) => s.id === serviceId);
+  const services = config?.services ?? [];
+  const doctors = config?.doctors ?? [];
+  const doctorId = doctors[0]?.id;
+  const selectedService = services.find((s) => s.id === serviceId);
 
   const { data: slotsData, isLoading: slotsLoading } = useQuery(
     ['booking-slots', selectedDate, doctorId],
@@ -104,6 +111,34 @@ export default function BookingWizard() {
 
   const loginHref = '/patient/login?redirect=/book';
   const registerHref = '/patient/register?redirect=/book';
+
+  if (configLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <p className="text-gray-600">جاري تحميل بيانات الحجز...</p>
+      </div>
+    );
+  }
+
+  if (configError || !config) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <PatientSiteHeader />
+        <div className="max-w-md mx-auto mt-16 p-6 card text-center space-y-4">
+          <p className="text-red-600 font-medium">تعذر تحميل صفحة الحجز</p>
+          <p className="text-sm text-gray-600">
+            تأكدي أن السيرفر يعمل وأن الرابط يشير إلى الموقع الصحيح.
+          </p>
+          <button type="button" onClick={() => refetchConfig()} className="btn-primary">
+            إعادة المحاولة
+          </button>
+          <Link to="/" className="btn-secondary inline-block">
+            العودة للرئيسية
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (done) {
     return (
@@ -215,7 +250,10 @@ export default function BookingWizard() {
         <section className="card border border-gray-100">
           <h2 className="font-semibold text-gray-800 mb-3">نوع الزيارة</h2>
           <div className="space-y-2">
-            {config?.services.map((s) => (
+            {services.length === 0 ? (
+              <p className="text-sm text-gray-500">لا توجد خدمات متاحة للحجز حالياً.</p>
+            ) : (
+            services.map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -233,9 +271,16 @@ export default function BookingWizard() {
                   </span>
                 </div>
               </button>
-            ))}
+            ))
+            )}
           </div>
         </section>
+
+        {!doctorId && (
+          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
+            لا يوجد طبيب مسجّل للحجز الإلكتروني — تواصلي مع العيادة.
+          </p>
+        )}
 
         <section className="card border border-gray-100">
           <h2 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
