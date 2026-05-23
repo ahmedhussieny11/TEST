@@ -50,6 +50,10 @@ npm run dev
 
 الواجهة: `http://localhost:3008` — الـ proxy يوجّه `/api` إلى الـ backend.
 
+## نشر إنتاج (سيرفر حقيقي)
+
+انظري **`DEPLOY-PRODUCTION.md`** — شرح كامل لماذا يعمل محلياً ويفشل بعد الرفع، وكيف تربطي الواجهة بالـ API.
+
 ## PostgreSQL (اختياري)
 
 ```bash

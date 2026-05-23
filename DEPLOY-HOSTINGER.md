@@ -1,19 +1,28 @@
-# رفع المشروع على استضافة Hostinger
+# رفع الواجهة على Hostinger (استضافة مشتركة)
 
-دليل خطوة بخطوة لنشر تطبيق العيادة (React + Vite) على Hostinger.
+> **مهم:** رفع `dist` فقط **لا يكفي**. النظام يحتاج **Backend (API)** شغال.
+> اقرئي **`DEPLOY-PRODUCTION.md`** — يشرح لماذا يعمل محلياً ويفشل على السيرفر.
 
 ---
 
 ## المتطلبات
 
-- حساب على [Hostinger](https://www.hostinger.com)
-- Node.js مثبت على جهازك (لعمل البناء)
+- حساب Hostinger
+- **سيرفر API** منفصل (VPS، Railway، Render) — أو Hostinger **VPS**
+- Node.js على جهازك للبناء
 
 ---
 
-## الخطوة 1: بناء المشروع (Build)
+## الخطوة 1: بناء الواجهة بعنوان API الحقيقي
 
-على جهازك، من مجلد المشروع شغّل:
+انسخي `.env.production.example` إلى `.env.production` وعدّلي:
+
+```env
+VITE_API_URL=https://api.YOUR-DOMAIN.com/api
+VITE_WS_URL=https://api.YOUR-DOMAIN.com
+```
+
+ثم:
 
 ```bash
 npm install
@@ -93,7 +102,8 @@ npm run build
 | المشكلة | الحل |
 |--------|------|
 | صفحة 404 عند فتح `/app` أو `/login` | تأكد من وجود `.htaccess` في `public_html` ومحتواه صحيح |
-| الصفحة بيضاء بعد الرفع | تأكد أنك رفعت محتويات `dist` وليس المجلد نفسه، وأن `index.html` في جذر `public_html` |
+| الصفحة بيضاء بعد الرفع | غالباً **الـ API غير موصول** — راجع `DEPLOY-PRODUCTION.md` و`VITE_API_URL` |
+| تسجيل دخول لا يعمل | شغّلي `npm run db:seed` على **سيرفر الـ Backend** وليس Hostinger فقط |
 | الصور أو الـ CSS لا تظهر | تأكد أن مجلد `assets` مرفوع بالكامل داخل `public_html` |
 | خطأ 500 | غالباً الاستضافة لا تدعم `mod_rewrite`؛ تواصل مع دعم Hostinger لتفعيله |
 

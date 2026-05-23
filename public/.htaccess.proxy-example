@@ -1,0 +1,15 @@
+# مثال: واجهة + API على نفس الدومين (VPS مع mod_proxy)
+# انسخي القواعد إلى .htaccess قبل قواعد SPA
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # توجيه API إلى NestJS على المنفذ 4000
+  RewriteRule ^api/(.*)$ http://127.0.0.1:4000/api/$1 [P,L]
+  RewriteRule ^uploads/(.*)$ http://127.0.0.1:4000/uploads/$1 [P,L]
+
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [QSA,L]
+</IfModule>
