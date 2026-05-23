@@ -8,6 +8,7 @@ import { toast } from 'react-toastify';
 import { Clock, User, Stethoscope, CheckCircle, RefreshCw } from 'lucide-react';
 import { mapApiAppointment, appointmentNeedsPayment } from '@/utils/appointments';
 import { Appointment } from '@/types';
+import { getWsBaseUrl } from '@/config/runtime';
 
 type QueueStatus = 'waiting_room' | 'in_exam' | 'done';
 
@@ -43,10 +44,6 @@ const statusConfig: Record<
   },
 };
 
-const SOCKET_URL =
-  import.meta.env.VITE_WS_URL ||
-  (import.meta.env.DEV ? 'http://localhost:4000' : window.location.origin);
-
 export default function LiveQueueTracker() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +70,7 @@ export default function LiveQueueTracker() {
 
   useEffect(() => {
     load();
-    const socket = io(`${SOCKET_URL}/queue`, { transports: ['websocket'] });
+    const socket = io(`${getWsBaseUrl()}/queue`, { transports: ['websocket'] });
     socket.on('queue.updated', load);
     return () => {
       socket.disconnect();

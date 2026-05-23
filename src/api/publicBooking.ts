@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { getApiBaseUrl } from '@/config/runtime';
 
 const publicClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: getApiBaseUrl(),
 });
 
 export interface BookingService {
@@ -20,6 +21,10 @@ export interface SlotInfo {
 }
 
 export const publicBookingApi = {
+  setBaseUrl: (baseURL: string) => {
+    publicClient.defaults.baseURL = baseURL;
+  },
+
   getConfig: () =>
     publicClient.get<{
       branding: { name: string; tagline: string };

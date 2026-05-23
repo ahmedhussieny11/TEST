@@ -5,9 +5,7 @@ import { X, Upload, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { filesApi } from '@/api/files';
 
-const SOCKET_URL =
-  import.meta.env.VITE_WS_URL ||
-  (import.meta.env.DEV ? 'http://localhost:4000' : window.location.origin);
+import { getWsBaseUrl } from '@/config/runtime';
 
 interface MediaGalleryProps {
   patientId: string;
@@ -28,7 +26,7 @@ export default function MediaGallery({ patientId, readOnly }: MediaGalleryProps)
   }, [refetch]);
 
   useEffect(() => {
-    const socket = io(`${SOCKET_URL}/files`, { transports: ['websocket'] });
+    const socket = io(`${getWsBaseUrl()}/files`, { transports: ['websocket'] });
     socket.on('files.updated', (payload: { patientId?: string }) => {
       if (!payload?.patientId || payload.patientId === patientId) {
         refresh();

@@ -7,12 +7,9 @@ import App from './App.tsx'
 import './index.css'
 import 'react-toastify/dist/ReactToastify.css'
 import { setPatientToken } from './api/client'
+import { applyApiBaseUrl } from './api/setupApi'
+import { loadRuntimeConfig } from './config/runtime'
 import { usePatientAuthStore } from './patient/store/patientAuthStore'
-
-const savedPatientToken = usePatientAuthStore.getState().token
-if (savedPatientToken) {
-  setPatientToken(savedPatientToken)
-}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,22 +20,34 @@ const queryClient = new QueryClient({
   },
 })
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-        <ToastContainer
-          position="top-center"
-          rtl={true}
-          autoClose={3000}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          pauseOnHover
-        />
-      </BrowserRouter>
-    </QueryClientProvider>
-  </React.StrictMode>,
-)
+async function bootstrap() {
+  await loadRuntimeConfig()
+  applyApiBaseUrl()
+
+  const savedPatientToken = usePatientAuthStore.getState().token
+  if (savedPatientToken) {
+    setPatientToken(savedPatientToken)
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <App />
+          <ToastContainer
+            position="top-center"
+            rtl={true}
+            autoClose={3000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            pauseOnHover
+          />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </React.StrictMode>,
+  )
+}
+
+bootstrap()
 

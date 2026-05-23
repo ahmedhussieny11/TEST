@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { getApiBaseUrl } from '@/config/runtime';
 import { apiClient } from './client';
 
 const publicClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: getApiBaseUrl(),
 });
 
 export type QuickCaptureSession = {
@@ -15,6 +16,10 @@ export type QuickCaptureSession = {
 };
 
 export const quickCaptureApi = {
+  setBaseUrl: (baseURL: string) => {
+    publicClient.defaults.baseURL = baseURL;
+  },
+
   createSession: (patientId: string, visitId?: string) =>
     apiClient.post<QuickCaptureSession>('/quick-capture/session', { patientId, visitId }),
 

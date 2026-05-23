@@ -14,9 +14,7 @@ import {
 import { patientPortalApi } from '@/api/patientPortal';
 import PatientSiteHeader from '../components/PatientSiteHeader';
 
-const SOCKET_URL =
-  import.meta.env.VITE_WS_URL ||
-  (import.meta.env.DEV ? 'http://localhost:4000' : window.location.origin);
+import { getWsBaseUrl } from '@/config/runtime';
 
 export default function PatientLiveQueue() {
   const { data, isLoading, refetch, isFetching } = useQuery(
@@ -30,7 +28,7 @@ export default function PatientLiveQueue() {
   }, [refetch]);
 
   useEffect(() => {
-    const socket = io(`${SOCKET_URL}/queue`, { transports: ['websocket'] });
+    const socket = io(`${getWsBaseUrl()}/queue`, { transports: ['websocket'] });
     socket.on('queue.updated', load);
     return () => {
       socket.disconnect();

@@ -18,6 +18,7 @@ backend/prisma/prisma/
 backend/.env
 .env
 .env.local
+.env.production
 dist-ssr
 *.local
 

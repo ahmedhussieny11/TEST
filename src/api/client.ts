@@ -1,10 +1,9 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/authStore';
-
-const baseURL = import.meta.env.VITE_API_URL || '/api';
+import { getApiBaseUrl } from '@/config/runtime';
 
 export const apiClient = axios.create({
-  baseURL,
+  baseURL: getApiBaseUrl(),
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -27,7 +26,7 @@ apiClient.interceptors.response.use(
 );
 
 export const patientApiClient = axios.create({
-  baseURL,
+  baseURL: getApiBaseUrl(),
   headers: { 'Content-Type': 'application/json' },
 });
 

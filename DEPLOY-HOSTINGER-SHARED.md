@@ -103,8 +103,21 @@ npm run build:prod
    - `index.html`
    - مجلد `assets/`
    - `.htaccess`
-   - `_redirects` (إن وُجد)
+   - **`config.json`** ← مهم
 4. فعّلي **SSL** من Hostinger (Let's Encrypt)
+
+### تعديل `config.json` (بدل .env على السيرفر)
+
+ملف **`.env` لا يعمل على Hostinger**. افتحي `public_html/config.json`:
+
+```json
+{
+  "apiUrl": "https://clinic-api-xxxx.onrender.com/api",
+  "wsUrl": "https://clinic-api-xxxx.onrender.com"
+}
+```
+
+استبدلي برابط Render الحقيقي واحفظي. انظري **`ENV.md`** للتفاصيل.
 
 ---
 
